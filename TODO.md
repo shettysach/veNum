@@ -1,0 +1,10 @@
+- [x] Index tensor
+- [x] Permute tensor
+- [x] Broadcast tensors
+- [x] Basic tensor ops 
+- [ ] Slice/part tensor
+- [ ] Display and Debug tensor
+- [ ] Other tensor functions
+- [ ] Autograd
+- [ ] NN
+- [ ] Better error handling (Maybe use anyhow)
