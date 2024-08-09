@@ -1,7 +1,6 @@
 use crate::core::shape::Shape;
 
-//pub(crate) struct IndexIterator<'a> {
-pub struct IndexIterator<'a> {
+pub(crate) struct IndexIterator<'a> {
     shape: &'a Shape,
     indices: Vec<usize>,
     exhausted: bool,
@@ -10,9 +9,11 @@ pub struct IndexIterator<'a> {
 impl<'a> IndexIterator<'a> {
     pub(crate) fn new(shape: &'a Shape) -> Self {
         let indices = vec![0; shape.numdims()];
+        let exhausted = shape.sizes.is_empty();
+
         IndexIterator {
             shape,
-            exhausted: !shape.valid_indices(&indices),
+            exhausted,
             indices,
         }
     }

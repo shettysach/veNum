@@ -10,9 +10,11 @@ WIP
 
 ##### credits
 
-- [kurtschelfthout](https://github.com/kurtschelfthout/tensorken)
+- [kurtschelfthout/tensorken](https://github.com/kurtschelfthout/tensorken)
+- [minitorch/minitorch](https://github.com/minitorch/minitorch)
 - [nreHieW/r-nn](https://github.com/nreHieW/r-nn)
 
 ##### resources
 
 - [pytorch-internals by ezyang](http://blog.ezyang.com/2019/05/pytorch-internals/)
+- [MiniTorch](https://minitorch.github.io/)

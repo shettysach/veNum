@@ -11,13 +11,18 @@ pub(crate) struct Shape {
 impl Shape {
     pub fn new(sizes: &[usize], offset: usize) -> Shape {
         let mut current = 1;
-        let mut strides = Vec::with_capacity(sizes.len());
-
-        for dim in sizes.iter().rev() {
-            strides.push(current);
-            current *= dim;
-        }
-        strides.reverse();
+        let strides = sizes
+            .iter()
+            .rev()
+            .map(|size| {
+                let stride = current;
+                current *= size;
+                stride
+            })
+            .collect::<Vec<usize>>()
+            .into_iter()
+            .rev()
+            .collect();
 
         Shape {
             sizes: sizes.to_vec(),
@@ -30,9 +35,15 @@ impl Shape {
         self.sizes.len()
     }
 
-    pub(crate) fn index_to_position(&self, indices: &[usize]) -> usize {
+    pub(crate) fn numel(&self) -> usize {
+        self.sizes.iter().product()
+    }
+
+    // Index
+
+    pub(crate) fn element(&self, indices: &[usize]) -> usize {
         self.matches_size(indices.len());
-        self.within_range(indices);
+        self.valid_indices(indices);
 
         self.strides
             .iter()
@@ -42,7 +53,40 @@ impl Shape {
             + self.offset
     }
 
-    pub(crate) fn permute(&self, permutation: &[usize]) -> Shape {
+    pub fn slice(&self, indices: &[(usize, usize)]) -> Shape {
+        self.valid_ranges(indices);
+
+        let mut indices = Vec::from(indices);
+        indices.resize(self.numdims(), (0, 0));
+        let mut offset = self.offset;
+
+        let sizes = self
+            .sizes
+            .iter()
+            .zip(self.strides.iter())
+            .zip(indices)
+            .map(|((&size, &stride), index)| {
+                offset += stride * index.0;
+                if index.1 == 0 {
+                    size - index.0
+                } else {
+                    index.1 - index.0
+                }
+            })
+            .collect();
+
+        let strides = self.strides.clone();
+
+        Shape {
+            sizes,
+            strides,
+            offset,
+        }
+    }
+
+    // Sizes
+
+    pub fn permute(&self, permutation: &[usize]) -> Shape {
         self.matches_size(permutation.len());
         self.dimensions_occur_only_once(permutation);
 
@@ -55,6 +99,36 @@ impl Shape {
             sizes,
             strides,
             offset: self.offset,
+        }
+    }
+
+    pub fn expand(&self, expansions: &[usize]) -> Shape {
+        if self.sizes == expansions {
+            self.clone()
+        } else {
+            self.matches_size(expansions.len());
+
+            let (expanded_sizes, expanded_strides) = self
+                .sizes
+                .iter()
+                .zip(self.strides.iter())
+                .zip(expansions)
+                .map(|((&size, &stride), &expansion)| {
+                    if expansion == size {
+                        (size, stride)
+                    } else if expansion % size == 0 {
+                        (expansion, 0)
+                    } else {
+                        panic!("Size {size} cannot be expaned to size {expansion}.");
+                    }
+                })
+                .collect();
+
+            Shape {
+                sizes: expanded_sizes,
+                strides: expanded_strides,
+                offset: self.offset,
+            }
         }
     }
 
@@ -96,35 +170,6 @@ impl Shape {
         result
     }
 
-    pub fn expand(&self, expansions: &[usize]) -> Shape {
-        if self.sizes == expansions {
-            self.clone()
-        } else {
-            self.matches_size(expansions.len());
-            let (expanded_sizes, expanded_strides) = self
-                .sizes
-                .iter()
-                .zip(self.strides.iter())
-                .zip(expansions)
-                .map(|((&size, &stride), &expansion)| {
-                    if expansion == size {
-                        (size, stride)
-                    } else if expansion % size == 0 {
-                        (expansion, 0)
-                    } else {
-                        panic!("Size {size} cannot be expaned to size {expansion}");
-                    }
-                })
-                .collect();
-
-            Shape {
-                sizes: expanded_sizes,
-                strides: expanded_strides,
-                offset: self.offset,
-            }
-        }
-    }
-
     // Validation
 
     fn matches_size(&self, length: usize) {
@@ -138,11 +183,32 @@ impl Shape {
         }
     }
 
-    fn within_range(&self, indices: &[usize]) {
+    fn valid_indices(&self, indices: &[usize]) {
         for (dimension, (size, index)) in self.sizes.iter().zip(indices).enumerate() {
             if index >= size {
                 panic!(
                     "Index {} is out of range for dimension {} (size: {}).",
+                    index, dimension, size
+                );
+            };
+        }
+    }
+
+    fn valid_ranges(&self, indices: &[(usize, usize)]) {
+        for (dimension, index) in indices.iter().enumerate() {
+            let size = self
+                .sizes
+                .get(dimension)
+                .expect("Index is longer than number of dimensions");
+
+            if index.0 > index.1 && index.1 > 0 {
+                panic!(
+                    "Range start index {} is greater than range end index {}.",
+                    index.0, index.1
+                );
+            } else if &index.0 > size || &index.1 > size {
+                panic!(
+                    "Index {:?} is out of range for dimension {} (size: {}).",
                     index, dimension, size
                 );
             };
@@ -158,12 +224,6 @@ impl Shape {
                 set.insert(dimension)
             };
         }
-    }
-
-    pub(crate) fn valid_indices(&self, indices: &[usize]) -> bool {
-        !self.sizes.is_empty()
-            && self.numdims() == indices.len()
-            && indices.iter().zip(self.sizes.iter()).all(|(i, s)| i < s)
     }
 }
 

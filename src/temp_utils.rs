@@ -8,7 +8,7 @@ where
 {
     for i in 0..a.sizes()[0] {
         for j in 0..a.sizes()[1] {
-            print!(" {:5.2} ", a.index(&[i, j]))
+            print!(" {:5.2} ", a.index_element(&[i, j]))
         }
         println!()
     }

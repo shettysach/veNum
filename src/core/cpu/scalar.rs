@@ -1,7 +1,7 @@
 use crate::Tensor;
 use std::ops::{Add, Div, Mul, Sub};
 
-// -- Scalar struct to bypass orphan rule on T --
+// -- Scalar struct to bypass the orphan rule on T --
 
 #[derive(Copy, Clone)]
 pub struct Scalar<T>(pub(crate) T);
