@@ -6,7 +6,8 @@ __   _____  /\ \ \_   _ _ __ ___
   \_/ \___\_\ \/  \__,_|_| |_| |_|
 ```
 
-WIP
+- vectorized N-dimensional numerical structures.
+- WIP
 
 ##### credits
 
@@ -17,4 +18,5 @@ WIP
 ##### resources
 
 - [pytorch-internals by ezyang](http://blog.ezyang.com/2019/05/pytorch-internals/)
+- [tensorken articles by Kurt Schelfthout](https://github.com/kurtschelfthout/tensorken/tree/main?tab=readme-ov-file#getting-started)
 - [MiniTorch](https://minitorch.github.io/)

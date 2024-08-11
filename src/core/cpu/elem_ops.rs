@@ -1,29 +1,10 @@
-use crate::Tensor;
-use std::ops::{Add, Div, Mul, Sub};
+use crate::{core::index::IndexIterator, Tensor};
+use std::{
+    iter::{Product, Sum},
+    ops::{Add, Div, Mul, Sub},
+};
 
-// -- Unary operations for floats --
-
-impl Tensor<f32> {
-    pub fn ln(&self) -> Tensor<f32> {
-        self.unary_map(|elem| elem.ln())
-    }
-
-    pub fn exp(&self) -> Tensor<f32> {
-        self.unary_map(|elem| elem.exp())
-    }
-}
-
-impl Tensor<f64> {
-    pub fn ln(&self) -> Tensor<f64> {
-        self.unary_map(|elem| elem.ln())
-    }
-
-    pub fn exp(&self) -> Tensor<f64> {
-        self.unary_map(|elem| elem.exp())
-    }
-}
-
-// -- Standard binary operations --
+// Standard binary operations
 
 macro_rules! binary_tensor_ops {
     ($trait:ident, $method:ident, $op:tt) => {
@@ -87,6 +68,47 @@ macro_rules! binary_tensor_ops {
             }
         }
     };
+}
+
+// Sum and product
+
+impl<T> Tensor<T>
+where
+    T: Copy + Sum<T> + Product<T>,
+{
+    pub fn sum(&self) -> T {
+        IndexIterator::new(&self.shape)
+            .map(|index| self.element(&index))
+            .sum()
+    }
+
+    pub fn product(&self) -> T {
+        IndexIterator::new(&self.shape)
+            .map(|index| self.element(&index))
+            .product()
+    }
+}
+
+// Unary operations for floats
+
+impl Tensor<f32> {
+    pub fn ln(&self) -> Tensor<f32> {
+        self.unary_map(|elem| elem.ln())
+    }
+
+    pub fn exp(&self) -> Tensor<f32> {
+        self.unary_map(|elem| elem.exp())
+    }
+}
+
+impl Tensor<f64> {
+    pub fn ln(&self) -> Tensor<f64> {
+        self.unary_map(|elem| elem.ln())
+    }
+
+    pub fn exp(&self) -> Tensor<f64> {
+        self.unary_map(|elem| elem.exp())
+    }
 }
 
 binary_tensor_ops!(Add, add, +);

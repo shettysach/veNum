@@ -1,11 +1,17 @@
 use core::panic;
-use std::{cmp::max, collections::HashSet};
+use std::{cmp::max, collections::HashSet, ops::Mul};
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub(crate) struct Shape {
     pub sizes: Vec<usize>,
-    pub strides: Vec<usize>,
+    pub strides: Vec<Stride>,
     pub offset: usize,
+}
+
+#[derive(Copy, Clone, PartialEq)]
+pub(crate) enum Stride {
+    Positive(usize),
+    Negative(usize),
 }
 
 impl Shape {
@@ -15,11 +21,11 @@ impl Shape {
             .iter()
             .rev()
             .map(|size| {
-                let stride = current;
+                let magnitude = current;
                 current *= size;
-                stride
+                Stride::new(magnitude, true)
             })
-            .collect::<Vec<usize>>()
+            .collect::<Vec<Stride>>()
             .into_iter()
             .rev()
             .collect();
@@ -39,54 +45,74 @@ impl Shape {
         self.sizes.iter().product()
     }
 
-    // Index
+    // Sizes
 
-    pub(crate) fn element(&self, indices: &[usize]) -> usize {
-        self.matches_size(indices.len());
-        self.valid_indices(indices);
+    // TODO: Modify reshape now that flip has been introduced
+    // Needs validation for when Tensors cannot be reshaped without copying
+    pub(crate) fn reshape(&self, sizes: &[usize], offset: usize) -> Shape {
+        self.valid_reshape(sizes);
 
-        self.strides
+        let mut current = 1;
+        let mut last_sign = true;
+
+        let strides = sizes
             .iter()
-            .zip(indices)
-            .map(|(stride, index)| stride * index)
-            .sum::<usize>()
-            + self.offset
-    }
+            .rev()
+            .enumerate()
+            .map(|(i, size)| {
+                let stride_val = current;
 
-    pub fn slice(&self, indices: &[(usize, usize)]) -> Shape {
-        self.valid_ranges(indices);
-
-        let mut indices = Vec::from(indices);
-        indices.resize(self.numdims(), (0, 0));
-        let mut offset = self.offset;
-
-        let sizes = self
-            .sizes
-            .iter()
-            .zip(self.strides.iter())
-            .zip(indices)
-            .map(|((&size, &stride), index)| {
-                offset += stride * index.0;
-                if index.1 == 0 {
-                    size - index.0
+                last_sign = if let Some(stride) = self.strides.get(i) {
+                    match stride {
+                        Stride::Positive(_) => true,
+                        Stride::Negative(_) => false,
+                    }
                 } else {
-                    index.1 - index.0
-                }
+                    last_sign
+                };
+
+                current *= size;
+
+                Stride::new(stride_val, last_sign)
             })
+            .collect::<Vec<Stride>>()
+            .into_iter()
+            .rev()
             .collect();
 
-        let strides = self.strides.clone();
-
         Shape {
-            sizes,
+            sizes: sizes.to_vec(),
             strides,
             offset,
         }
     }
 
-    // Sizes
+    pub(crate) fn squeeze(&self) -> Shape {
+        if self.sizes.iter().product::<usize>() == 1 {
+            Shape::new(&[1], self.offset)
+        } else {
+            let (sizes, strides) = self
+                .sizes
+                .iter()
+                .zip(self.strides.iter())
+                .filter_map(|(&size, &stride)| {
+                    if size != 1 {
+                        Some((size, stride))
+                    } else {
+                        None
+                    }
+                })
+                .unzip();
 
-    pub fn permute(&self, permutation: &[usize]) -> Shape {
+            Shape {
+                sizes,
+                strides,
+                offset: self.offset,
+            }
+        }
+    }
+
+    pub(crate) fn permute(&self, permutation: &[usize]) -> Shape {
         self.matches_size(permutation.len());
         self.dimensions_occur_only_once(permutation);
 
@@ -102,13 +128,39 @@ impl Shape {
         }
     }
 
-    pub fn expand(&self, expansions: &[usize]) -> Shape {
+    pub(crate) fn flip(&self, flips: &[usize]) -> Shape {
+        self.dimensions_occur_only_once(flips);
+
+        let strides = self
+            .strides
+            .iter()
+            .enumerate()
+            .map(|(i, &stride)| {
+                if flips.contains(&i) {
+                    match stride {
+                        Stride::Positive(stride_val) => Stride::Negative(stride_val),
+                        Stride::Negative(stride_val) => Stride::Positive(stride_val),
+                    }
+                } else {
+                    stride
+                }
+            })
+            .collect();
+
+        Shape {
+            sizes: self.sizes.clone(),
+            strides,
+            offset: self.offset,
+        }
+    }
+
+    pub(crate) fn expand(&self, expansions: &[usize]) -> Shape {
         if self.sizes == expansions {
             self.clone()
         } else {
             self.matches_size(expansions.len());
 
-            let (expanded_sizes, expanded_strides) = self
+            let (sizes, strides) = self
                 .sizes
                 .iter()
                 .zip(self.strides.iter())
@@ -117,7 +169,7 @@ impl Shape {
                     if expansion == size {
                         (size, stride)
                     } else if expansion % size == 0 {
-                        (expansion, 0)
+                        (expansion, Stride::new(0, true))
                     } else {
                         panic!("Size {size} cannot be expaned to size {expansion}.");
                     }
@@ -125,8 +177,8 @@ impl Shape {
                 .collect();
 
             Shape {
-                sizes: expanded_sizes,
-                strides: expanded_strides,
+                sizes,
+                strides,
                 offset: self.offset,
             }
         }
@@ -134,7 +186,7 @@ impl Shape {
 
     // Broadcast
 
-    pub fn broadcast(&self, rhs: &Shape) -> Vec<usize> {
+    pub(crate) fn broadcast(&self, rhs: &Shape) -> Vec<usize> {
         let lhs_shape = &self.sizes;
         let rhs_shape = &rhs.sizes;
 
@@ -170,6 +222,53 @@ impl Shape {
         result
     }
 
+    // Index
+
+    pub(crate) fn element(&self, indices: &[usize]) -> usize {
+        self.matches_size(indices.len());
+        self.valid_indices(indices);
+
+        self.sizes
+            .iter()
+            .zip(self.strides.iter())
+            .zip(indices)
+            .map(|((&size, stride), &index)| stride.offset(index, size))
+            .sum::<usize>()
+            + self.offset
+    }
+
+    pub(crate) fn slice(&self, indices: &[(usize, usize)]) -> Shape {
+        self.valid_ranges(indices);
+
+        let mut indices = Vec::from(indices);
+        indices.resize(self.numdims(), (0, 0));
+        let mut offset = self.offset;
+
+        let sizes = self
+            .sizes
+            .iter()
+            .zip(self.strides.iter())
+            .zip(indices)
+            .map(|((&size, stride), index)| {
+                offset += stride.offset(index.0, size);
+
+                if index.1 == 0 {
+                    size - index.0
+                } else {
+                    index.1 - index.0
+                }
+            })
+            .collect();
+
+        let strides = self.strides.clone();
+
+        Shape {
+            sizes,
+            strides,
+            offset,
+        }
+    }
+
     // Validation
 
     fn matches_size(&self, length: usize) {
@@ -179,6 +278,24 @@ impl Shape {
             panic!(
                 "Number of indices ({}) does not match the number of dimensions ({}).",
                 length, num_dimensions
+            )
+        }
+    }
+
+    fn valid_reshape(&self, sizes: &[usize]) {
+        let data_len = self.numel();
+        let new_size = sizes.iter().product::<usize>();
+
+        if new_size == 1 {
+            sizes.len()
+        } else {
+            new_size
+        };
+
+        if data_len != new_size {
+            panic!(
+                "({:?}) cannot be reshaped to ({:?}).\nData length ({data_len}) does not match new length ({new_size}).",
+                self.sizes, sizes,
             )
         }
     }
@@ -199,7 +316,7 @@ impl Shape {
             let size = self
                 .sizes
                 .get(dimension)
-                .expect("Index is longer than number of dimensions");
+                .expect("Indices length is longer than number of dimensions");
 
             if index.0 > index.1 && index.1 > 0 {
                 panic!(
@@ -233,4 +350,30 @@ impl PartialEq for Shape {
     }
 }
 
-impl Eq for Shape {}
+impl Stride {
+    pub(crate) fn new(stride_val: usize, positive: bool) -> Stride {
+        if positive {
+            Stride::Positive(stride_val)
+        } else {
+            Stride::Negative(stride_val)
+        }
+    }
+
+    pub(crate) fn offset(&self, index: usize, size: usize) -> usize {
+        match self {
+            Stride::Positive(stride_val) => index * stride_val,
+            Stride::Negative(stride_val) => (size - 1 - index) * stride_val,
+        }
+    }
+}
+
+impl Mul<usize> for Stride {
+    type Output = Stride;
+
+    fn mul(self, rhs: usize) -> Stride {
+        match self {
+            Stride::Positive(stride_val) => Stride::Positive(stride_val * rhs),
+            Stride::Negative(stride_val) => Stride::Negative(stride_val * rhs),
+        }
+    }
+}

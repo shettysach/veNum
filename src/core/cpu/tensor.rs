@@ -1,6 +1,8 @@
-use crate::core::index::IndexIterator;
-use crate::core::shape::Shape;
-use std::sync::Arc;
+use crate::core::{
+    index::IndexIterator,
+    shape::{Shape, Stride},
+};
+use std::{iter::successors, sync::Arc};
 
 pub struct Tensor<T> {
     pub(crate) data: Arc<Vec<T>>,
@@ -17,13 +19,13 @@ where
         let data_len = data.len();
         let tensor_size = sizes.iter().product();
 
-        if data_len == tensor_size {
-            Tensor {
-                data: Arc::clone(data),
-                shape: Shape::new(sizes, offset),
-            }
-        } else {
+        if data_len != tensor_size {
             panic!("Data length ({data_len}) does not match size of tensor ({tensor_size}).")
+        }
+
+        Tensor {
+            data: Arc::clone(data),
+            shape: Shape::new(sizes, offset),
         }
     }
 
@@ -40,13 +42,30 @@ where
         Tensor::new(&data, sizes)
     }
 
+    pub fn arange(start: T, end: T, step: T) -> Tensor<T>
+    where
+        T: std::ops::Add<Output = T> + PartialOrd,
+    {
+        let data: Vec<T> = successors(Some(start), |&prev| {
+            let current = prev + step;
+            if current < end {
+                Some(current)
+            } else {
+                None
+            }
+        })
+        .collect();
+
+        Tensor::new(&data, &[data.len()])
+    }
+
     pub fn linspace(start: T, end: T, num: u16) -> Tensor<T>
     where
-        T: std::ops::Add<Output = T>,
-        T: std::ops::Sub<Output = T>,
-        T: std::ops::Mul<Output = T>,
-        T: std::ops::Div<Output = T>,
-        T: std::convert::From<u16>,
+        T: std::ops::Add<Output = T>
+            + std::ops::Sub<Output = T>
+            + std::ops::Mul<Output = T>
+            + std::ops::Div<Output = T>
+            + std::convert::From<u16>,
     {
         let step = (end - start) / T::from(num - 1);
         let data = (0..num)
@@ -74,7 +93,7 @@ where
         &self.shape.sizes
     }
 
-    pub fn strides(&self) -> &Vec<usize> {
+    pub(crate) fn strides(&self) -> &Vec<Stride> {
         &self.shape.strides
     }
 
@@ -84,11 +103,11 @@ where
 
     // Elements
 
-    pub fn index_element(&self, indices: &[usize]) -> T {
+    pub fn element(&self, indices: &[usize]) -> T {
         self.data.get(self.shape.element(indices)).copied().unwrap()
     }
 
-    pub fn index_slice(&self, indices: &[(usize, usize)]) -> Tensor<T> {
+    pub fn slice(&self, indices: &[(usize, usize)]) -> Tensor<T> {
         let shape = self.shape.slice(indices);
 
         Tensor {
@@ -100,21 +119,21 @@ where
     // Shape
 
     pub fn reshape(&self, sizes: &[usize]) -> Tensor<T> {
-        let data_len = self.shape.numel();
-        let tensor_size = sizes.iter().product();
-
-        if data_len == tensor_size {
-            Tensor {
-                data: Arc::clone(&self.data),
-                shape: Shape::new(sizes, self.offset()),
-            }
-        } else {
-            panic!("Data length ({data_len}) does not match size of tensor ({tensor_size}).")
+        Tensor {
+            data: Arc::clone(&self.data),
+            shape: self.shape.reshape(sizes, self.offset()),
         }
     }
 
     pub fn ravel(&self) -> Tensor<T> {
         self.reshape(&[self.numel()])
+    }
+
+    pub fn squeeze(&self) -> Tensor<T> {
+        Tensor {
+            data: Arc::clone(&self.data),
+            shape: self.shape.squeeze(),
+        }
     }
 
     pub fn permute(&self, permutation: &[usize]) -> Tensor<T> {
@@ -130,6 +149,15 @@ where
         Tensor {
             data: Arc::clone(&self.data),
             shape: expanded_shape,
+        }
+    }
+
+    pub fn flip(&self, flips: &[usize]) -> Tensor<T> {
+        let flipped_shape = self.shape.flip(flips);
+
+        Tensor {
+            data: Arc::clone(&self.data),
+            shape: flipped_shape,
         }
     }
 
@@ -184,8 +212,8 @@ where
 
         let result = IndexIterator::new(&shape)
             .map(|index| {
-                let lhs_elem = lhs_broadcasted.index_element(&index);
-                let rhs_elem = rhs_broadcasted.index_element(&index);
+                let lhs_elem = lhs_broadcasted.element(&index);
+                let rhs_elem = rhs_broadcasted.element(&index);
                 f(lhs_elem, rhs_elem)
             })
             .collect();

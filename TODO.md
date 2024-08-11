@@ -5,10 +5,17 @@
   - [x] Basic tensor element ops
   - [x] Slice tensor
   - [x] Display and Debug tensor
-    - [ ] Try returning Table instead of ()
-  - [ ] Matmul
+  - [x] Modify strides 
+    - [x] Flip
+  - [x] Arange
+    - [x] Try using iters
+  - [ ]Tensor cloning
+    - [?] Reshape
+  - [?] Modify linspace
+  - [>] Matmul
   - [ ] Padding tensor
   - [ ] Conv
-  - [ ] Other tensor functions
+  - [ ] Other ndarray functions
+- [ ] Better error handling (candle, anyhow)
 - [ ] Autograd
 - [ ] GPU
