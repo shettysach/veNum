@@ -1,5 +1,5 @@
 use core::panic;
-use std::{cmp::max, collections::HashSet, ops::Mul};
+use std::{cmp::max, collections::HashSet};
 
 #[derive(Clone)]
 pub(crate) struct Shape {
@@ -8,8 +8,8 @@ pub(crate) struct Shape {
     pub offset: usize,
 }
 
-#[derive(Copy, Clone, PartialEq)]
-pub(crate) enum Stride {
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum Stride {
     Positive(usize),
     Negative(usize),
 }
@@ -47,33 +47,24 @@ impl Shape {
 
     // Sizes
 
-    // TODO: Modify reshape now that flip has been introduced
-    // Needs validation for when Tensors cannot be reshaped without copying
-    pub(crate) fn reshape(&self, sizes: &[usize], offset: usize) -> Shape {
+    pub(crate) fn view(&self, sizes: &[usize]) -> Shape {
         self.valid_reshape(sizes);
 
         let mut current = 1;
-        let mut last_sign = true;
+        let positive = match self.strides.first() {
+            Some(Stride::Positive(_)) => true,
+            Some(Stride::Negative(_)) => false,
+            None => panic!("Cannot reshape empty tensor"),
+        };
 
         let strides = sizes
             .iter()
             .rev()
-            .enumerate()
-            .map(|(i, size)| {
+            .map(|size| {
                 let stride_val = current;
-
-                last_sign = if let Some(stride) = self.strides.get(i) {
-                    match stride {
-                        Stride::Positive(_) => true,
-                        Stride::Negative(_) => false,
-                    }
-                } else {
-                    last_sign
-                };
-
                 current *= size;
 
-                Stride::new(stride_val, last_sign)
+                Stride::new(stride_val, positive)
             })
             .collect::<Vec<Stride>>()
             .into_iter()
@@ -83,7 +74,7 @@ impl Shape {
         Shape {
             sizes: sizes.to_vec(),
             strides,
-            offset,
+            offset: self.offset,
         }
     }
 
@@ -168,7 +159,7 @@ impl Shape {
                 .map(|((&size, &stride), &expansion)| {
                     if expansion == size {
                         (size, stride)
-                    } else if expansion % size == 0 {
+                    } else if size == 1 {
                         (expansion, Stride::new(0, true))
                     } else {
                         panic!("Size {size} cannot be expaned to size {expansion}.");
@@ -238,34 +229,36 @@ impl Shape {
     }
 
     pub(crate) fn slice(&self, indices: &[(usize, usize)]) -> Shape {
-        self.valid_ranges(indices);
+        if self.is_contiguous() {
+            self.valid_ranges(indices);
 
-        let mut indices = Vec::from(indices);
-        indices.resize(self.numdims(), (0, 0));
-        let mut offset = self.offset;
+            let mut indices = indices.to_vec();
+            indices.resize(self.numdims(), (0, 0));
+            let mut offset = self.offset;
 
-        let sizes = self
-            .sizes
-            .iter()
-            .zip(self.strides.iter())
-            .zip(indices)
-            .map(|((&size, stride), index)| {
-                offset += stride.offset(index.0, size);
+            let sizes = self
+                .sizes
+                .iter()
+                .zip(self.strides.iter())
+                .zip(indices)
+                .map(|((&size, stride), index)| {
+                    offset += stride.offset(index.0, size);
 
-                if index.1 == 0 {
-                    size - index.0
-                } else {
-                    index.1 - index.0
-                }
-            })
-            .collect();
+                    if index.1 == 0 {
+                        size - index.0
+                    } else {
+                        index.1 - index.0
+                    }
+                })
+                .collect();
 
-        let strides = self.strides.clone();
-
-        Shape {
-            sizes,
-            strides,
-            offset,
+            Shape {
+                sizes,
+                strides: self.strides.clone(),
+                offset,
+            }
+        } else {
+            panic!("Convert to contiguous before slicing.")
         }
     }
 
@@ -282,7 +275,7 @@ impl Shape {
         }
     }
 
-    fn valid_reshape(&self, sizes: &[usize]) {
+    pub(crate) fn valid_reshape(&self, sizes: &[usize]) {
         let data_len = self.numel();
         let new_size = sizes.iter().product::<usize>();
 
@@ -300,8 +293,17 @@ impl Shape {
         }
     }
 
+    pub(crate) fn is_contiguous(&self) -> bool {
+        for i in 0..self.numdims() - 1 {
+            if !self.strides[i].is_contiguous(&self.strides[i + 1]) {
+                return false;
+            }
+        }
+        true
+    }
+
     fn valid_indices(&self, indices: &[usize]) {
-        for (dimension, (size, index)) in self.sizes.iter().zip(indices).enumerate() {
+        for (dimension, (&size, &index)) in self.sizes.iter().zip(indices).enumerate() {
             if index >= size {
                 panic!(
                     "Index {} is out of range for dimension {} (size: {}).",
@@ -365,15 +367,12 @@ impl Stride {
             Stride::Negative(stride_val) => (size - 1 - index) * stride_val,
         }
     }
-}
 
-impl Mul<usize> for Stride {
-    type Output = Stride;
-
-    fn mul(self, rhs: usize) -> Stride {
-        match self {
-            Stride::Positive(stride_val) => Stride::Positive(stride_val * rhs),
-            Stride::Negative(stride_val) => Stride::Negative(stride_val * rhs),
+    fn is_contiguous(&self, rhs: &Stride) -> bool {
+        match (self, rhs) {
+            (Stride::Positive(l), Stride::Positive(r)) => !(*l == 0 || *r == 0),
+            //(Stride::Negative(l), Stride::Negative(r)) => !(*l == 0 || *r == 0),
+            _ => false,
         }
     }
 }

@@ -6,7 +6,7 @@ __   _____  /\ \ \_   _ _ __ ___
   \_/ \___\_\ \/  \__,_|_| |_| |_|
 ```
 
-- vectorized N-dimensional numerical structures.
+- vectorized N-dimensional numerical arrays.
 - WIP
 
 ##### credits

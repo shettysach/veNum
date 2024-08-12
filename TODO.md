@@ -9,9 +9,11 @@
     - [x] Flip
   - [x] Arange
     - [x] Try using iters
-  - [ ]Tensor cloning
-    - [?] Reshape
+  - [x] Tensor to contiguous
+    - [x] Reshape
   - [?] Modify linspace
+  - [ ] Flip all dims as contiguous
+    - [ ] Slice after flip all dims
   - [>] Matmul
   - [ ] Padding tensor
   - [ ] Conv

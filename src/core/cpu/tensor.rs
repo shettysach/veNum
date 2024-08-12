@@ -75,10 +75,23 @@ where
         Tensor::new(&data, &[num as usize])
     }
 
+    pub fn to_contiguous(&self) -> Tensor<T> {
+        Tensor {
+            data: Arc::new(self.data()),
+            shape: Shape::new(&self.shape.sizes, 0),
+        }
+    }
+
     // Attributes
 
-    pub fn data(&self) -> Vec<T> {
-        self.data.to_vec()
+    pub fn is_contiguous(&self) -> bool {
+        self.shape.is_contiguous()
+    }
+
+    fn data(&self) -> Vec<T> {
+        IndexIterator::new(&self.shape)
+            .map(|index| self.element(&index))
+            .collect()
     }
 
     pub fn numel(&self) -> usize {
@@ -89,11 +102,11 @@ where
         self.shape.numdims()
     }
 
-    pub fn sizes(&self) -> &Vec<usize> {
+    pub fn sizes(&self) -> &[usize] {
         &self.shape.sizes
     }
 
-    pub(crate) fn strides(&self) -> &Vec<Stride> {
+    pub fn strides(&self) -> &[Stride] {
         &self.shape.strides
     }
 
@@ -101,27 +114,38 @@ where
         self.shape.offset
     }
 
-    // Elements
+    // Extract
 
     pub fn element(&self, indices: &[usize]) -> T {
-        self.data.get(self.shape.element(indices)).copied().unwrap()
+        self.data[self.shape.element(indices)]
     }
 
     pub fn slice(&self, indices: &[(usize, usize)]) -> Tensor<T> {
-        let shape = self.shape.slice(indices);
-
         Tensor {
             data: Arc::clone(&self.data),
-            shape,
+            shape: self.shape.slice(indices),
         }
     }
 
     // Shape
 
     pub fn reshape(&self, sizes: &[usize]) -> Tensor<T> {
+        self.shape.valid_reshape(sizes);
+
+        if self.is_contiguous() {
+            self.view(sizes)
+        } else {
+            Tensor {
+                data: Arc::new(self.data()),
+                shape: Shape::new(sizes, 0),
+            }
+        }
+    }
+
+    pub fn view(&self, sizes: &[usize]) -> Tensor<T> {
         Tensor {
             data: Arc::clone(&self.data),
-            shape: self.shape.reshape(sizes, self.offset()),
+            shape: self.shape.view(sizes),
         }
     }
 
@@ -144,20 +168,16 @@ where
     }
 
     pub fn expand(&self, expansions: &[usize]) -> Tensor<T> {
-        let expanded_shape = self.shape.expand(expansions);
-
         Tensor {
             data: Arc::clone(&self.data),
-            shape: expanded_shape,
+            shape: self.shape.expand(expansions),
         }
     }
 
     pub fn flip(&self, flips: &[usize]) -> Tensor<T> {
-        let flipped_shape = self.shape.flip(flips);
-
         Tensor {
             data: Arc::clone(&self.data),
-            shape: flipped_shape,
+            shape: self.shape.flip(flips),
         }
     }
 
@@ -181,7 +201,7 @@ where
         }
     }
 
-    pub fn binary_tensor_map(&self, rhs: &Tensor<T>, f: impl Fn(T, T) -> T) -> Tensor<T> {
+    pub fn binary_tensor_map<R>(&self, rhs: &Tensor<T>, f: impl Fn(T, T) -> R) -> Tensor<R> {
         if self.shape == rhs.shape {
             self.equal_shapes_map(rhs, f)
         } else {
@@ -189,7 +209,7 @@ where
         }
     }
 
-    fn equal_shapes_map(&self, rhs: &Tensor<T>, f: impl Fn(T, T) -> T) -> Tensor<T> {
+    fn equal_shapes_map<R>(&self, rhs: &Tensor<T>, f: impl Fn(T, T) -> R) -> Tensor<R> {
         let data = self
             .data
             .iter()
@@ -203,7 +223,7 @@ where
         }
     }
 
-    fn broadcasted_shapes_map(&self, rhs: &Tensor<T>, f: impl Fn(T, T) -> T) -> Tensor<T> {
+    fn broadcasted_shapes_map<R>(&self, rhs: &Tensor<T>, f: impl Fn(T, T) -> R) -> Tensor<R> {
         let sizes = self.shape.broadcast(&rhs.shape);
         let shape = Shape::new(&sizes, 0);
 
@@ -230,10 +250,9 @@ where
         if self.numdims() == resize_len {
             self.expand(expansions)
         } else {
-            let mut sizes = self.sizes().clone();
-            sizes.reverse();
-            sizes.resize(expansions.len(), 1);
-            sizes.reverse();
+            let mut sizes = self.sizes().to_vec();
+            let ones_len = expansions.len() - sizes.len();
+            sizes.splice(..0, vec![1; ones_len]);
 
             self.reshape(&sizes).expand(expansions)
         }
