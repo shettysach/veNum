@@ -2,6 +2,7 @@ use crate::core::{
     index::IndexIterator,
     shape::{Shape, Stride},
 };
+use core::panic;
 use std::{iter::successors, sync::Arc};
 
 pub struct Tensor<T> {
@@ -34,7 +35,7 @@ where
     }
 
     pub fn new_1d(data: &[T]) -> Tensor<T> {
-        Tensor::init(&Arc::new(data.to_vec()), &[data.len()], 0)
+        Tensor::new(data, &[data.len()])
     }
 
     pub fn same(element: T, sizes: &[usize]) -> Tensor<T> {
@@ -88,7 +89,7 @@ where
         self.shape.is_contiguous()
     }
 
-    fn data(&self) -> Vec<T> {
+    pub fn data(&self) -> Vec<T> {
         IndexIterator::new(&self.shape)
             .map(|index| self.element(&index))
             .collect()
@@ -121,9 +122,13 @@ where
     }
 
     pub fn slice(&self, indices: &[(usize, usize)]) -> Tensor<T> {
-        Tensor {
-            data: Arc::clone(&self.data),
-            shape: self.shape.slice(indices),
+        if self.is_contiguous() {
+            Tensor {
+                data: Arc::clone(&self.data),
+                shape: self.shape.slice(indices),
+            }
+        } else {
+            panic!("Use to_contiguous() before calling");
         }
     }
 
@@ -184,21 +189,31 @@ where
     // Maps
 
     pub fn unary_map<R>(&self, f: impl Fn(T) -> R) -> Tensor<R> {
-        let data = self.data.iter().map(|l| f(*l)).collect::<Vec<R>>();
+        let data = Arc::new(
+            IndexIterator::new(&self.shape)
+                .map(|index| {
+                    let elem = self.element(&index);
+                    f(elem)
+                })
+                .collect(),
+        );
+        let shape = Shape::new(self.sizes(), 0);
 
-        Tensor {
-            data: Arc::new(data),
-            shape: self.shape.clone(),
-        }
+        Tensor { data, shape }
     }
 
     pub fn binary_scalar_map<R>(&self, rhs: T, f: impl Fn(T, T) -> R) -> Tensor<R> {
-        let data = self.data.iter().map(|l| f(*l, rhs)).collect::<Vec<R>>();
+        let data = Arc::new(
+            IndexIterator::new(&self.shape)
+                .map(|index| {
+                    let lhs_elem = self.element(&index);
+                    f(lhs_elem, rhs)
+                })
+                .collect(),
+        );
+        let shape = Shape::new(self.sizes(), 0);
 
-        Tensor {
-            data: Arc::new(data),
-            shape: self.shape.clone(),
-        }
+        Tensor { data, shape }
     }
 
     pub fn binary_tensor_map<R>(&self, rhs: &Tensor<T>, f: impl Fn(T, T) -> R) -> Tensor<R> {
@@ -210,17 +225,18 @@ where
     }
 
     fn equal_shapes_map<R>(&self, rhs: &Tensor<T>, f: impl Fn(T, T) -> R) -> Tensor<R> {
-        let data = self
-            .data
-            .iter()
-            .zip(rhs.data.iter())
-            .map(|(l, r)| f(*l, *r))
-            .collect();
+        let data = Arc::new(
+            IndexIterator::new(&self.shape)
+                .map(|index| {
+                    let lhs_elem = self.element(&index);
+                    let rhs_elem = rhs.element(&index);
+                    f(lhs_elem, rhs_elem)
+                })
+                .collect(),
+        );
+        let shape = Shape::new(self.sizes(), 0);
 
-        Tensor {
-            data: Arc::new(data),
-            shape: self.shape.clone(),
-        }
+        Tensor { data, shape }
     }
 
     fn broadcasted_shapes_map<R>(&self, rhs: &Tensor<T>, f: impl Fn(T, T) -> R) -> Tensor<R> {
@@ -230,18 +246,17 @@ where
         let lhs_broadcasted = self.reshape_then_expand(&sizes);
         let rhs_broadcasted = rhs.reshape_then_expand(&sizes);
 
-        let result = IndexIterator::new(&shape)
-            .map(|index| {
-                let lhs_elem = lhs_broadcasted.element(&index);
-                let rhs_elem = rhs_broadcasted.element(&index);
-                f(lhs_elem, rhs_elem)
-            })
-            .collect();
+        let data = Arc::new(
+            IndexIterator::new(&shape)
+                .map(|index| {
+                    let lhs_elem = lhs_broadcasted.element(&index);
+                    let rhs_elem = rhs_broadcasted.element(&index);
+                    f(lhs_elem, rhs_elem)
+                })
+                .collect(),
+        );
 
-        Tensor {
-            data: Arc::new(result),
-            shape,
-        }
+        Tensor { data, shape }
     }
 
     pub fn reshape_then_expand(&self, expansions: &[usize]) -> Tensor<T> {

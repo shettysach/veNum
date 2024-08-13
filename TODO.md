@@ -12,8 +12,9 @@
   - [x] Tensor to contiguous
     - [x] Reshape
   - [?] Modify linspace
-  - [ ] Flip all dims as contiguous
-    - [ ] Slice after flip all dims
+  - [x] Flip all dims as contiguous
+    - [?] Slice after flip all dims
+  - [ ] Dimension-wise ops
   - [>] Matmul
   - [ ] Padding tensor
   - [ ] Conv

@@ -1,5 +1,5 @@
 use core::panic;
-use std::{cmp::max, collections::HashSet};
+use std::{cmp::max, collections::HashSet, ops::Mul};
 
 #[derive(Clone)]
 pub(crate) struct Shape {
@@ -8,7 +8,7 @@ pub(crate) struct Shape {
     pub offset: usize,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug)]
 pub enum Stride {
     Positive(usize),
     Negative(usize),
@@ -228,37 +228,49 @@ impl Shape {
             + self.offset
     }
 
+    // TODO: optimisize the negative stride case
     pub(crate) fn slice(&self, indices: &[(usize, usize)]) -> Shape {
-        if self.is_contiguous() {
-            self.valid_ranges(indices);
+        self.valid_ranges(indices);
 
-            let mut indices = indices.to_vec();
-            indices.resize(self.numdims(), (0, 0));
-            let mut offset = self.offset;
+        let mut indices = indices.to_vec();
+        indices.resize(self.numdims(), (0, 0));
 
-            let sizes = self
-                .sizes
-                .iter()
-                .zip(self.strides.iter())
-                .zip(indices)
-                .map(|((&size, stride), index)| {
-                    offset += stride.offset(index.0, size);
+        let mut offset = self.offset;
+        let positive = match self.strides.first() {
+            Some(Stride::Positive(_)) => true,
+            Some(Stride::Negative(_)) => false,
+            None => panic!("Cannot reshape empty tensor"),
+        };
 
-                    if index.1 == 0 {
-                        size - index.0
-                    } else {
-                        index.1 - index.0
-                    }
-                })
-                .collect();
+        let sizes = self
+            .sizes
+            .iter()
+            .zip(self.strides.iter())
+            .zip(indices)
+            .map(|((&size, stride), (start, end))| {
+                let end = if end == 0 { size } else { end };
 
-            Shape {
-                sizes,
-                strides: self.strides.clone(),
-                offset,
-            }
+                let (start, end) = if positive {
+                    (start, end)
+                } else {
+                    (size - end, size - start)
+                };
+
+                offset += stride.offset(start, size);
+                end - start
+            })
+            .collect();
+
+        offset = if positive {
+            offset
         } else {
-            panic!("Convert to contiguous before slicing.")
+            self.numel() - 1 - offset
+        };
+
+        Shape {
+            sizes,
+            strides: self.strides.clone(),
+            offset,
         }
     }
 
@@ -295,7 +307,7 @@ impl Shape {
 
     pub(crate) fn is_contiguous(&self) -> bool {
         for i in 0..self.numdims() - 1 {
-            if !self.strides[i].is_contiguous(&self.strides[i + 1]) {
+            if self.strides[i] != self.strides[i + 1] * self.sizes[i + 1] {
                 return false;
             }
         }
@@ -367,11 +379,26 @@ impl Stride {
             Stride::Negative(stride_val) => (size - 1 - index) * stride_val,
         }
     }
+}
 
-    fn is_contiguous(&self, rhs: &Stride) -> bool {
-        match (self, rhs) {
-            (Stride::Positive(l), Stride::Positive(r)) => !(*l == 0 || *r == 0),
-            //(Stride::Negative(l), Stride::Negative(r)) => !(*l == 0 || *r == 0),
+impl Mul<usize> for Stride {
+    type Output = Stride;
+
+    fn mul(self, rhs: usize) -> Self::Output {
+        match self {
+            Stride::Positive(stride_val) => Stride::Positive(stride_val * rhs),
+            Stride::Negative(stride_val) => Stride::Negative(stride_val * rhs),
+        }
+    }
+}
+
+impl PartialEq for Stride {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Stride::Positive(lhs), Stride::Positive(rhs)) => lhs == rhs,
+            (Stride::Negative(lhs), Stride::Negative(rhs)) => lhs == rhs,
+            (Stride::Positive(0), Stride::Negative(0)) => true,
+            (Stride::Negative(0), Stride::Positive(0)) => true,
             _ => false,
         }
     }

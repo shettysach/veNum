@@ -70,19 +70,24 @@ macro_rules! binary_tensor_ops {
     };
 }
 
+binary_tensor_ops!(Add, add, +);
+binary_tensor_ops!(Sub, sub, -);
+binary_tensor_ops!(Mul, mul, *);
+binary_tensor_ops!(Div, div, /);
+
 // Sum and product
 
 impl<T> Tensor<T>
 where
     T: Copy + Sum<T> + Product<T>,
 {
-    pub fn sum(&self) -> T {
+    pub fn sum_all(&self) -> T {
         IndexIterator::new(&self.shape)
             .map(|index| self.element(&index))
             .sum()
     }
 
-    pub fn product(&self) -> T {
+    pub fn product_all(&self) -> T {
         IndexIterator::new(&self.shape)
             .map(|index| self.element(&index))
             .product()
@@ -110,8 +115,3 @@ impl Tensor<f64> {
         self.unary_map(|elem| elem.exp())
     }
 }
-
-binary_tensor_ops!(Add, add, +);
-binary_tensor_ops!(Sub, sub, -);
-binary_tensor_ops!(Mul, mul, *);
-binary_tensor_ops!(Div, div, /);

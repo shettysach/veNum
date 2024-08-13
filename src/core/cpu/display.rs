@@ -50,8 +50,7 @@ fn odd_dimensions<T>(
     table_format: &TableFormat,
 ) -> Row
 where
-    T: Copy,
-    T: Display,
+    T: Copy + Display,
 {
     let size = tensor.sizes()[dimension_offset];
     let stride = tensor.strides()[dimension_offset];
@@ -88,8 +87,7 @@ fn even_dimensions<T>(
     table_format: &TableFormat,
 ) -> Table
 where
-    T: Copy,
-    T: Display,
+    T: Copy + Display,
 {
     let size = tensor.sizes()[dimension_offset];
     let stride = tensor.strides()[dimension_offset];
