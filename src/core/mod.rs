@@ -1,6 +1,7 @@
 mod cpu;
-mod index;
+mod indexer;
 mod shape;
+mod slicer;
 mod tests;
 
 pub use cpu::scalar::Scalar;

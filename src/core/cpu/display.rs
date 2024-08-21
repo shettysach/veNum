@@ -23,17 +23,18 @@ impl<T: Display + Debug + Copy> Display for Tensor<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         let n = self.shape.numdims();
 
-        if (1..=10).contains(&n) {
+        if (1..=8).contains(&n) {
             let table_format = &format::consts::FORMAT_BOX_CHARS;
 
             let table = if n % 2 == 1 {
-                let row = odd_dimensions(n, self, 0, 0, table_format);
+                let row = odd_dimensions(n, self, 0, table_format);
                 let mut table = Table::init(vec![row]);
                 table.set_format(**table_format);
                 table
             } else {
-                even_dimensions(n, self, 0, 0, table_format)
+                even_dimensions(n, self, 0, table_format)
             };
+
             write!(f, "{}", table)?;
         }
 
@@ -46,14 +47,14 @@ fn odd_dimensions<T>(
     n: usize,
     tensor: &Tensor<T>,
     stride_offset: usize,
-    dimension_offset: usize,
     table_format: &TableFormat,
 ) -> Row
 where
     T: Copy + Display,
 {
-    let size = tensor.sizes()[dimension_offset];
-    let stride = tensor.strides()[dimension_offset];
+    let dim = tensor.numdims() - n;
+    let size = tensor.sizes()[dim];
+    let stride = tensor.strides()[dim];
 
     if n == 1 {
         let offset = tensor.offset() + stride_offset;
@@ -72,7 +73,7 @@ where
             (0..size)
                 .map(|index| {
                     let offset = stride.offset(index, size) + stride_offset;
-                    even_dimensions(n - 1, tensor, offset, dimension_offset + 1, table_format)
+                    even_dimensions(n - 1, tensor, offset, table_format)
                 })
                 .collect::<Vec<Table>>(),
         )
@@ -83,19 +84,19 @@ fn even_dimensions<T>(
     n: usize,
     tensor: &Tensor<T>,
     stride_offset: usize,
-    dimension_offset: usize,
     table_format: &TableFormat,
 ) -> Table
 where
     T: Copy + Display,
 {
-    let size = tensor.sizes()[dimension_offset];
-    let stride = tensor.strides()[dimension_offset];
+    let dim = tensor.numdims() - n;
+    let size = tensor.sizes()[dim];
+    let stride = tensor.strides()[dim];
 
     let rows = (0..size)
         .map(|index| {
             let offset = stride.offset(index, size) + stride_offset;
-            odd_dimensions(n - 1, tensor, offset, dimension_offset + 1, table_format)
+            odd_dimensions(n - 1, tensor, offset, table_format)
         })
         .collect();
 

@@ -17,18 +17,16 @@ pub enum Stride {
 impl Shape {
     pub fn new(sizes: &[usize], offset: usize) -> Shape {
         let mut current = 1;
-        let strides = sizes
+        let mut strides: Vec<Stride> = sizes
             .iter()
             .rev()
             .map(|size| {
-                let magnitude = current;
+                let stride_val = current;
                 current *= size;
-                Stride::new(magnitude, true)
+                Stride::new(stride_val, true)
             })
-            .collect::<Vec<Stride>>()
-            .into_iter()
-            .rev()
-            .collect();
+            .collect::<Vec<Stride>>();
+        strides.reverse();
 
         Shape {
             sizes: sizes.to_vec(),
@@ -51,25 +49,21 @@ impl Shape {
         self.valid_reshape(sizes);
 
         let mut current = 1;
-        let positive = match self.strides.first() {
-            Some(Stride::Positive(_)) => true,
-            Some(Stride::Negative(_)) => false,
-            None => panic!("Cannot reshape empty tensor"),
+        let positive = match self.strides.first().expect("Cannot view empty tensor.") {
+            Stride::Positive(_) => true,
+            Stride::Negative(_) => false,
         };
 
-        let strides = sizes
+        let mut strides = sizes
             .iter()
             .rev()
             .map(|size| {
                 let stride_val = current;
                 current *= size;
-
                 Stride::new(stride_val, positive)
             })
-            .collect::<Vec<Stride>>()
-            .into_iter()
-            .rev()
-            .collect();
+            .collect::<Vec<Stride>>();
+        strides.reverse();
 
         Shape {
             sizes: sizes.to_vec(),
@@ -228,18 +222,15 @@ impl Shape {
             + self.offset
     }
 
-    // TODO: optimisize the negative stride case
     pub(crate) fn slice(&self, indices: &[(usize, usize)]) -> Shape {
         self.valid_ranges(indices);
 
         let mut indices = indices.to_vec();
         indices.resize(self.numdims(), (0, 0));
 
-        let mut offset = self.offset;
-        let positive = match self.strides.first() {
-            Some(Stride::Positive(_)) => true,
-            Some(Stride::Negative(_)) => false,
-            None => panic!("Cannot reshape empty tensor"),
+        let mut offset = match self.strides.first().expect("Cannot slice empty tensor.") {
+            Stride::Positive(_) => self.offset,
+            Stride::Negative(_) => self.numel() - 1 - self.offset,
         };
 
         let sizes = self
@@ -250,22 +241,45 @@ impl Shape {
             .map(|((&size, stride), (start, end))| {
                 let end = if end == 0 { size } else { end };
 
-                let (start, end) = if positive {
-                    (start, end)
-                } else {
-                    (size - end, size - start)
+                match stride {
+                    Stride::Positive(stride_val) => offset += start * stride_val,
+                    Stride::Negative(stride_val) => offset -= (end - 1) * stride_val,
                 };
 
-                offset += stride.offset(start, size);
                 end - start
             })
             .collect();
 
-        offset = if positive {
-            offset
-        } else {
-            self.numel() - 1 - offset
+        Shape {
+            sizes,
+            strides: self.strides.clone(),
+            offset,
+        }
+    }
+
+    pub(crate) fn single_slice(&self, indices: &[Option<usize>]) -> Shape {
+        let mut offset = match self.strides.first().expect("Cannot slice empty tensor.") {
+            Stride::Positive(_) => self.offset,
+            Stride::Negative(_) => self.numel() - 1 - self.offset,
         };
+
+        let sizes = self
+            .sizes
+            .iter()
+            .zip(self.strides.iter())
+            .zip(indices)
+            .map(|((&size, stride), i)| {
+                if let Some(i) = i {
+                    match stride {
+                        Stride::Positive(stride_val) => offset += i * stride_val,
+                        Stride::Negative(stride_val) => offset -= i * stride_val,
+                    }
+                    1
+                } else {
+                    size
+                }
+            })
+            .collect();
 
         Shape {
             sizes,

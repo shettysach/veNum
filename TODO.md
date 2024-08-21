@@ -13,12 +13,13 @@
     - [x] Reshape
   - [?] Modify linspace
   - [x] Flip all dims as contiguous
-    - [?] Slice after flip all dims
-  - [ ] Dimension-wise ops
-  - [>] Matmul
+    - [x] Slice after flip all dims
+  - [x] Dimension-wise ops
+    - [x] Optimised
+  - [ ] Matmul
   - [ ] Padding tensor
   - [ ] Conv
   - [ ] Other ndarray functions
-- [ ] Better error handling (candle, anyhow)
+- [ ] Error handling 
 - [ ] Autograd
 - [ ] GPU

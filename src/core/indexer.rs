@@ -28,6 +28,7 @@ impl<'a> Iterator for IndexIterator<'a> {
         }
 
         let next = self.indices.clone();
+
         for i in (0..self.shape.numdims()).rev() {
             self.indices[i] += 1;
 
@@ -39,6 +40,7 @@ impl<'a> Iterator for IndexIterator<'a> {
         }
 
         self.exhausted = self.indices.iter().all(|i| *i == 0);
+
         Some(next)
     }
 }

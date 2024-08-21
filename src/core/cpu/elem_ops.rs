@@ -1,4 +1,4 @@
-use crate::{core::index::IndexIterator, Tensor};
+use crate::{core::indexer::IndexIterator, Tensor};
 use std::{
     iter::{Product, Sum},
     ops::{Add, Div, Mul, Sub},
@@ -81,16 +81,32 @@ impl<T> Tensor<T>
 where
     T: Copy + Sum<T> + Product<T>,
 {
-    pub fn sum_all(&self) -> T {
-        IndexIterator::new(&self.shape)
-            .map(|index| self.element(&index))
-            .sum()
+    pub fn sum(&self) -> T {
+        if self.is_contiguous() {
+            self.data_contiguous().iter().copied().sum()
+        } else {
+            IndexIterator::new(&self.shape)
+                .map(|index| self.element(&index))
+                .sum()
+        }
     }
 
-    pub fn product_all(&self) -> T {
-        IndexIterator::new(&self.shape)
-            .map(|index| self.element(&index))
-            .product()
+    pub fn product(&self) -> T {
+        if self.is_contiguous() {
+            self.data_contiguous().iter().copied().product()
+        } else {
+            IndexIterator::new(&self.shape)
+                .map(|index| self.element(&index))
+                .product()
+        }
+    }
+
+    pub fn sum_dimensions(&self, dimensions: &[usize]) -> Tensor<T> {
+        self.reduce_map(dimensions, Tensor::sum)
+    }
+
+    pub fn product_dimensions(&self, dimensions: &[usize]) -> Tensor<T> {
+        self.reduce_map(dimensions, Tensor::product)
     }
 }
 
@@ -104,6 +120,11 @@ impl Tensor<f32> {
     pub fn exp(&self) -> Tensor<f32> {
         self.unary_map(|elem| elem.exp())
     }
+
+    pub fn softmax(&self) -> Tensor<f32> {
+        let exp = &self.exp();
+        exp / exp.sum()
+    }
 }
 
 impl Tensor<f64> {
@@ -113,5 +134,10 @@ impl Tensor<f64> {
 
     pub fn exp(&self) -> Tensor<f64> {
         self.unary_map(|elem| elem.exp())
+    }
+
+    pub fn softmax(&self) -> Tensor<f64> {
+        let exp = &self.exp();
+        exp / exp.sum()
     }
 }
