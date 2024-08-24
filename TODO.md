@@ -15,11 +15,13 @@
   - [x] Flip all dims as contiguous
     - [x] Slice after flip all dims
   - [x] Dimension-wise ops
-    - [x] Optimised
-  - [ ] Matmul
+  - [>] Matmul
+    - [x] 2D
+    - [x] ND
   - [ ] Padding tensor
   - [ ] Conv
   - [ ] Other ndarray functions
-- [ ] Error handling 
+- [>] Optimisations
+- [x] Error handling 
 - [ ] Autograd
 - [ ] GPU

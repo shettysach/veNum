@@ -5,12 +5,13 @@ pub struct SliceIterator<'a> {
     shape: &'a Shape,
     indices: Vec<Option<usize>>,
     dimensions: &'a [usize],
-    exhausted: bool,
+    current: usize,
+    maximum: usize,
 }
 
 impl<'a> SliceIterator<'a> {
     pub(crate) fn new(shape: &'a Shape, dimensions: &'a [usize]) -> Self {
-        let indices = (0..shape.numdims())
+        let indices = (0..shape.ndims())
             .map(|d| {
                 if dimensions.contains(&d) {
                     Some(0)
@@ -19,13 +20,15 @@ impl<'a> SliceIterator<'a> {
                 }
             })
             .collect();
-        let exhausted = shape.sizes.is_empty();
+        let current = 0;
+        let maximum = dimensions.iter().map(|&d| shape.sizes[d]).product();
 
         SliceIterator {
             shape,
-            exhausted,
-            dimensions,
             indices,
+            dimensions,
+            current,
+            maximum,
         }
     }
 }
@@ -33,22 +36,19 @@ impl<'a> SliceIterator<'a> {
 impl<'a> Iterator for SliceIterator<'a> {
     type Item = Vec<Option<usize>>;
     fn next(&mut self) -> Option<Self::Item> {
-        if self.exhausted {
+        if self.current == self.maximum {
             return None;
-        };
+        }
 
-        self.exhausted = self
-            .dimensions
-            .iter()
-            .all(|&d| self.indices[d] == Some(self.shape.sizes[d] - 1));
+        self.current += 1;
 
         let next = self.indices.clone();
 
         for &d in self.dimensions.iter().rev() {
-            let i = self.indices[d].unwrap();
-            self.indices[d] = Some(i + 1);
+            let i = self.indices[d].unwrap() + 1;
 
-            if i + 1 < self.shape.sizes[d] {
+            if i != self.shape.sizes[d] {
+                self.indices[d] = Some(i);
                 break;
             }
 

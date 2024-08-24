@@ -1,9 +1,12 @@
 use venum::Tensor;
 
 fn main() {
-    let tensor_3d = Tensor::<i32>::linspace(0, 26, 27).reshape(&[3, 3, 3]);
-    println!("{}", tensor_3d);
+    let tensor = Tensor::<i32>::arange(0, 4 * 5 * 6, 1)
+        .unwrap()
+        .reshape(&[4, 5, 6])
+        .unwrap();
+    println!("{}", tensor);
 
-    let sums = tensor_3d.sum_dimensions(&[0, 1]);
+    let sums = tensor.sum_dimensions(&[0]).unwrap().squeeze().unwrap();
     println!("{}", sums);
 }

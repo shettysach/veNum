@@ -1,4 +1,4 @@
-use core::panic;
+use crate::Res;
 use std::{cmp::max, collections::HashSet, ops::Mul};
 
 #[derive(Clone)]
@@ -35,7 +35,7 @@ impl Shape {
         }
     }
 
-    pub(crate) fn numdims(&self) -> usize {
+    pub(crate) fn ndims(&self) -> usize {
         self.sizes.len()
     }
 
@@ -43,13 +43,17 @@ impl Shape {
         self.sizes.iter().product()
     }
 
-    // Sizes
+    // Shape operations
 
-    pub(crate) fn view(&self, sizes: &[usize]) -> Shape {
-        self.valid_reshape(sizes);
+    pub(crate) fn view(&self, sizes: &[usize]) -> Res<Shape> {
+        self.valid_reshape(sizes)?;
 
         let mut current = 1;
-        let positive = match self.strides.first().expect("Cannot view empty tensor.") {
+        let positive = match self
+            .strides
+            .first()
+            .ok_or_else(|| "Strides are empty. Unable to reshape/view.".to_string())?
+        {
             Stride::Positive(_) => true,
             Stride::Negative(_) => false,
         };
@@ -65,16 +69,16 @@ impl Shape {
             .collect::<Vec<Stride>>();
         strides.reverse();
 
-        Shape {
+        Ok(Shape {
             sizes: sizes.to_vec(),
             strides,
             offset: self.offset,
-        }
+        })
     }
 
-    pub(crate) fn squeeze(&self) -> Shape {
+    pub(crate) fn squeeze(&self) -> Res<Shape> {
         if self.sizes.iter().product::<usize>() == 1 {
-            Shape::new(&[1], self.offset)
+            Ok(Shape::new(&[1], self.offset))
         } else {
             let (sizes, strides) = self
                 .sizes
@@ -89,32 +93,44 @@ impl Shape {
                 })
                 .unzip();
 
-            Shape {
+            Ok(Shape {
                 sizes,
                 strides,
                 offset: self.offset,
-            }
+            })
         }
     }
 
-    pub(crate) fn permute(&self, permutation: &[usize]) -> Shape {
-        self.matches_size(permutation.len());
-        self.dimensions_occur_only_once(permutation);
+    pub(crate) fn permute(&self, permutation: &[usize]) -> Res<Shape> {
+        self.matches_size(permutation.len())?;
+        self.valid_dimensions(permutation)?;
 
         let (sizes, strides) = permutation
             .iter()
             .map(|i| (self.sizes[*i], self.strides[*i]))
             .collect();
 
-        Shape {
+        Ok(Shape {
             sizes,
             strides,
             offset: self.offset,
-        }
+        })
     }
 
-    pub(crate) fn flip(&self, flips: &[usize]) -> Shape {
-        self.dimensions_occur_only_once(flips);
+    pub fn transpose(&self, dim_1: usize, dim_2: usize) -> Res<Shape> {
+        let ndims = self.ndims();
+        if ndims < 2 {
+            return Err("Transpose requires at least two dimensions".to_string());
+        }
+
+        let mut permutation: Vec<usize> = (0..ndims).collect();
+        permutation.swap(dim_1, dim_2);
+
+        self.permute(&permutation)
+    }
+
+    pub(crate) fn flip(&self, flips: &[usize]) -> Res<Shape> {
+        self.valid_dimensions(flips)?;
 
         let strides = self
             .strides
@@ -132,103 +148,71 @@ impl Shape {
             })
             .collect();
 
-        Shape {
+        Ok(Shape {
             sizes: self.sizes.clone(),
             strides,
             offset: self.offset,
-        }
+        })
     }
 
-    pub(crate) fn expand(&self, expansions: &[usize]) -> Shape {
+    pub(crate) fn expand(&self, expansions: &[usize]) -> Res<Shape> {
         if self.sizes == expansions {
-            self.clone()
-        } else {
-            self.matches_size(expansions.len());
-
-            let (sizes, strides) = self
-                .sizes
-                .iter()
-                .zip(self.strides.iter())
-                .zip(expansions)
-                .map(|((&size, &stride), &expansion)| {
-                    if expansion == size {
-                        (size, stride)
-                    } else if size == 1 {
-                        (expansion, Stride::new(0, true))
-                    } else {
-                        panic!("Size {size} cannot be expaned to size {expansion}.");
-                    }
-                })
-                .collect();
-
-            Shape {
-                sizes,
-                strides,
-                offset: self.offset,
-            }
+            return Ok(self.clone());
         }
-    }
+        self.matches_size(expansions.len())?;
 
-    // Broadcast
-
-    pub(crate) fn broadcast(&self, rhs: &Shape) -> Vec<usize> {
-        let lhs_shape = &self.sizes;
-        let rhs_shape = &rhs.sizes;
-
-        let mut lhs_iter = lhs_shape.iter();
-        let mut rhs_iter = rhs_shape.iter();
-
-        let max_len = max(lhs_shape.len(), rhs_shape.len());
-        let mut result = Vec::with_capacity(max_len);
-
-        loop {
-            match (lhs_iter.next_back(), rhs_iter.next_back()) {
-                (Some(&l), Some(&r)) => {
-                    if l == r {
-                        result.push(l);
-                    } else if l == 1 {
-                        result.push(r);
-                    } else if r == 1 {
-                        result.push(l);
-                    } else {
-                        panic!(
-                            "Shapes {:?} and {:?} cannot be broadcast together.",
-                            lhs_shape, rhs_shape
-                        );
-                    }
+        let (sizes, strides) = self
+            .sizes
+            .iter()
+            .zip(self.strides.iter())
+            .zip(expansions)
+            .map(|((&size, &stride), &expansion)| {
+                if expansion == size {
+                    Ok((size, stride))
+                } else if size == 1 {
+                    Ok((expansion, Stride::new(0, true)))
+                } else {
+                    Err(format!(
+                        "Size {size} cannot be expaned to size {expansion}."
+                    ))
                 }
-                (Some(&l), None) => result.push(l),
-                (None, Some(&r)) => result.push(r),
-                (None, None) => break,
-            }
-        }
+            })
+            .collect::<Res<(Vec<usize>, Vec<Stride>)>>()?;
 
-        result.reverse();
-        result
+        Ok(Shape {
+            sizes,
+            strides,
+            offset: self.offset,
+        })
     }
 
     // Index
 
-    pub(crate) fn element(&self, indices: &[usize]) -> usize {
-        self.matches_size(indices.len());
-        self.valid_indices(indices);
+    pub(crate) fn element(&self, indices: &[usize]) -> Res<usize> {
+        self.matches_size(indices.len())?;
+        self.valid_indices(indices)?;
 
-        self.sizes
+        Ok(self
+            .sizes
             .iter()
             .zip(self.strides.iter())
             .zip(indices)
             .map(|((&size, stride), &index)| stride.offset(index, size))
             .sum::<usize>()
-            + self.offset
+            + self.offset)
     }
 
-    pub(crate) fn slice(&self, indices: &[(usize, usize)]) -> Shape {
-        self.valid_ranges(indices);
+    pub(crate) fn slice(&self, indices: &[(usize, usize)]) -> Res<Shape> {
+        self.valid_ranges(indices)?;
 
         let mut indices = indices.to_vec();
-        indices.resize(self.numdims(), (0, 0));
+        indices.resize(self.ndims(), (0, 0));
 
-        let mut offset = match self.strides.first().expect("Cannot slice empty tensor.") {
+        let mut offset = match self
+            .strides
+            .first()
+            .ok_or_else(|| "Strides are empty. Unable to slice.".to_string())?
+        {
             Stride::Positive(_) => self.offset,
             Stride::Negative(_) => self.numel() - 1 - self.offset,
         };
@@ -250,15 +234,19 @@ impl Shape {
             })
             .collect();
 
-        Shape {
+        Ok(Shape {
             sizes,
             strides: self.strides.clone(),
             offset,
-        }
+        })
     }
 
-    pub(crate) fn single_slice(&self, indices: &[Option<usize>]) -> Shape {
-        let mut offset = match self.strides.first().expect("Cannot slice empty tensor.") {
+    pub(crate) fn single_slice(&self, indices: &[Option<usize>]) -> Res<Shape> {
+        let mut offset = match self
+            .strides
+            .first()
+            .ok_or_else(|| "Strides are empty. Unable to slice.".to_string())?
+        {
             Stride::Positive(_) => self.offset,
             Stride::Negative(_) => self.numel() - 1 - self.offset,
         };
@@ -281,94 +269,141 @@ impl Shape {
             })
             .collect();
 
-        Shape {
+        Ok(Shape {
             sizes,
             strides: self.strides.clone(),
             offset,
+        })
+    }
+
+    // Broadcast
+
+    pub(crate) fn broadcast(lhs_sizes: &[usize], rhs_sizes: &[usize]) -> Res<Vec<usize>> {
+        let mut lhs_iter = lhs_sizes.iter();
+        let mut rhs_iter = rhs_sizes.iter();
+
+        let max_len = max(lhs_sizes.len(), rhs_sizes.len());
+        let mut result = Vec::with_capacity(max_len);
+
+        loop {
+            match (lhs_iter.next_back(), rhs_iter.next_back()) {
+                (Some(&l), Some(&r)) => {
+                    if l == r {
+                        result.push(l);
+                    } else if l == 1 {
+                        result.push(r);
+                    } else if r == 1 {
+                        result.push(l);
+                    } else {
+                        return Err(format!(
+                            "Shapes {:?} and {:?} cannot be broadcast together.",
+                            lhs_sizes, rhs_sizes
+                        ));
+                    }
+                }
+                (Some(&l), None) => result.push(l),
+                (None, Some(&r)) => result.push(r),
+                (None, None) => break,
+            }
         }
+
+        result.reverse();
+        Ok(result)
     }
 
     // Validation
 
-    fn matches_size(&self, length: usize) {
-        let num_dimensions = self.numdims();
-
-        if length != num_dimensions {
-            panic!(
-                "Number of indices ({}) does not match the number of dimensions ({}).",
-                length, num_dimensions
-            )
-        }
-    }
-
-    pub(crate) fn valid_reshape(&self, sizes: &[usize]) {
-        let data_len = self.numel();
-        let new_size = sizes.iter().product::<usize>();
-
-        if new_size == 1 {
-            sizes.len()
-        } else {
-            new_size
-        };
-
-        if data_len != new_size {
-            panic!(
-                "({:?}) cannot be reshaped to ({:?}).\nData length ({data_len}) does not match new length ({new_size}).",
-                self.sizes, sizes,
-            )
-        }
-    }
-
     pub(crate) fn is_contiguous(&self) -> bool {
-        for i in 0..self.numdims() - 1 {
+        for i in 0..self.ndims() - 1 {
             if self.strides[i] != self.strides[i + 1] * self.sizes[i + 1] {
                 return false;
             }
         }
+
         true
     }
 
-    fn valid_indices(&self, indices: &[usize]) {
-        for (dimension, (&size, &index)) in self.sizes.iter().zip(indices).enumerate() {
-            if index >= size {
-                panic!(
-                    "Index {} is out of range for dimension {} (size: {}).",
-                    index, dimension, size
-                );
-            };
+    fn matches_size(&self, length: usize) -> Res<()> {
+        let num_dimensions = self.ndims();
+
+        if length != num_dimensions {
+            return Err(format!(
+                "Number of indices ({}) does not match the number of dimensions ({}).",
+                length, num_dimensions
+            ));
         }
+
+        Ok(())
     }
 
-    fn valid_ranges(&self, indices: &[(usize, usize)]) {
+    pub(crate) fn valid_reshape(&self, sizes: &[usize]) -> Res<()> {
+        let data_len = self.numel();
+        let new_size = sizes.iter().product::<usize>();
+
+        if data_len != new_size {
+            return Err(format!(
+            "({:?}) cannot be reshaped to ({:?}). Data length ({}) does not match new length ({}).",
+            self.sizes, sizes, data_len, new_size
+        ));
+        }
+
+        Ok(())
+    }
+
+    fn valid_indices(&self, indices: &[usize]) -> Res<()> {
+        for (dimension, (&size, &index)) in self.sizes.iter().zip(indices).enumerate() {
+            if index >= size {
+                return Err(format!(
+                    "Index {} is out of range for dimension {} (size: {}).",
+                    index, dimension, size
+                ));
+            }
+        }
+
+        Ok(())
+    }
+
+    fn valid_ranges(&self, indices: &[(usize, usize)]) -> Res<()> {
         for (dimension, index) in indices.iter().enumerate() {
             let size = self
                 .sizes
                 .get(dimension)
-                .expect("Indices length is longer than number of dimensions");
+                .ok_or_else(|| "Indices length is longer than number of dimensions".to_string())?;
 
             if index.0 > index.1 && index.1 > 0 {
-                panic!(
+                return Err(format!(
                     "Range start index {} is greater than range end index {}.",
                     index.0, index.1
-                );
+                ));
             } else if &index.0 > size || &index.1 > size {
-                panic!(
+                return Err(format!(
                     "Index {:?} is out of range for dimension {} (size: {}).",
                     index, dimension, size
-                );
-            };
+                ));
+            }
         }
+
+        Ok(())
     }
 
-    fn dimensions_occur_only_once(&self, dimensions: &[usize]) {
+    pub(crate) fn valid_dimensions(&self, dimensions: &[usize]) -> Res<()> {
+        let max_dimension = self.ndims() - 1;
         let mut set = HashSet::with_capacity(dimensions.len());
-        for dimension in dimensions {
-            if set.contains(dimension) {
-                panic!("Dimension {dimension} repeats");
+
+        for &dimension in dimensions {
+            if max_dimension < dimension {
+                return Err(format!(
+                    "Dimension {} is greater than max range of dimensions ({}).",
+                    dimension, max_dimension
+                ));
+            } else if set.contains(&dimension) {
+                return Err(format!("Dimension {} repeats.", dimension));
             } else {
-                set.insert(dimension)
-            };
+                set.insert(dimension);
+            }
         }
+
+        Ok(())
     }
 }
 

@@ -1,4 +1,4 @@
-use crate::{core::indexer::IndexIterator, Tensor};
+use crate::{core::indexer::IndexIterator, Res, Tensor};
 use std::{
     iter::{Product, Sum},
     ops::{Add, Div, Mul, Sub},
@@ -12,7 +12,7 @@ macro_rules! binary_tensor_ops {
         where
             T: Copy + $trait<Output = T>,
         {
-            type Output = Tensor<T>;
+            type Output = Res<Tensor<T>>;
             fn $method(self, rhs: Tensor<T>) -> Self::Output {
                 self.binary_tensor_map(&rhs, |l, r| l $op r)
             }
@@ -22,7 +22,7 @@ macro_rules! binary_tensor_ops {
         where
             T: Copy + $trait<Output = T>,
         {
-            type Output = Tensor<T>;
+            type Output = Res<Tensor<T>>;
             fn $method(self, rhs: &Tensor<T>) -> Self::Output {
                 self.binary_tensor_map(rhs, |l, r| l $op r)
             }
@@ -32,7 +32,7 @@ macro_rules! binary_tensor_ops {
         where
             T: Copy + $trait<Output = T>,
         {
-            type Output = Tensor<T>;
+            type Output = Res<Tensor<T>>;
             fn $method(self, rhs: Tensor<T>) -> Self::Output {
                 self.binary_tensor_map(&rhs, |l, r| l $op r)
             }
@@ -42,7 +42,7 @@ macro_rules! binary_tensor_ops {
         where
             T: Copy + $trait<Output = T>,
         {
-            type Output = Tensor<T>;
+            type Output = Res<Tensor<T>>;
             fn $method(self, rhs: &Tensor<T>) -> Self::Output {
                 self.binary_tensor_map(rhs, |l, r| l $op r)
             }
@@ -79,33 +79,45 @@ binary_tensor_ops!(Div, div, /);
 
 impl<T> Tensor<T>
 where
-    T: Copy + Sum<T> + Product<T>,
+    T: Copy,
 {
-    pub fn sum(&self) -> T {
+    pub fn sum(&self) -> T
+    where
+        T: Sum<T>,
+    {
         if self.is_contiguous() {
             self.data_contiguous().iter().copied().sum()
         } else {
             IndexIterator::new(&self.shape)
-                .map(|index| self.element(&index))
+                .map(|index| self.element(&index).unwrap())
                 .sum()
         }
     }
 
-    pub fn product(&self) -> T {
+    pub fn product(&self) -> T
+    where
+        T: Product<T>,
+    {
         if self.is_contiguous() {
             self.data_contiguous().iter().copied().product()
         } else {
             IndexIterator::new(&self.shape)
-                .map(|index| self.element(&index))
+                .map(|index| self.element(&index).unwrap())
                 .product()
         }
     }
 
-    pub fn sum_dimensions(&self, dimensions: &[usize]) -> Tensor<T> {
+    pub fn sum_dimensions(&self, dimensions: &[usize]) -> Res<Tensor<T>>
+    where
+        T: Sum<T>,
+    {
         self.reduce_map(dimensions, Tensor::sum)
     }
 
-    pub fn product_dimensions(&self, dimensions: &[usize]) -> Tensor<T> {
+    pub fn product_dimensions(&self, dimensions: &[usize]) -> Res<Tensor<T>>
+    where
+        T: Product<T>,
+    {
         self.reduce_map(dimensions, Tensor::product)
     }
 }
