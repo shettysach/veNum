@@ -31,4 +31,25 @@ mod core_tests {
 
         Ok(())
     }
+
+    #[test]
+    fn eye() -> Res<()> {
+        let tensor = Tensor::arange(0, 64, 1)?.view(&[4, 4, 4])?;
+        let eye = Tensor::eye(4)?;
+        let result = tensor.matmul(&eye)?;
+
+        assert_eq!(tensor, result);
+
+        Ok(())
+    }
+
+    #[test]
+    fn empty() -> Res<()> {
+        let empty = Tensor::<u8>::new_1d(&[])?;
+        let max_empty = empty.max();
+
+        assert!(max_empty.is_err());
+
+        Ok(())
+    }
 }

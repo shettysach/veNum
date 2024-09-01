@@ -4,17 +4,16 @@ pub(crate) struct IndexIterator<'a> {
     shape: &'a Shape,
     indices: Vec<usize>,
     current: usize,
+    maximum: usize,
 }
 
 impl<'a> IndexIterator<'a> {
     pub(crate) fn new(shape: &'a Shape) -> Self {
-        let indices = vec![0; shape.ndims()];
-        let current = 0;
-
         IndexIterator {
             shape,
-            current,
-            indices,
+            indices: vec![0; shape.ndims()],
+            current: 0,
+            maximum: shape.numel(),
         }
     }
 }
@@ -23,7 +22,7 @@ impl<'a> Iterator for IndexIterator<'a> {
     type Item = Vec<usize>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.current == self.shape.numel() {
+        if self.current == self.maximum {
             return None;
         };
 

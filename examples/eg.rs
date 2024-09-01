@@ -1,12 +1,14 @@
-use venum::Tensor;
+use venum::{Res, Tensor};
 
-fn main() {
-    let tensor = Tensor::<i32>::arange(0, 4 * 5 * 6, 1)
-        .unwrap()
-        .reshape(&[4, 5, 6])
-        .unwrap();
-    println!("{}", tensor);
+fn main() -> Res<()> {
+    let a = Tensor::new_1d(&[true, true, false])?;
+    let b = Tensor::new_1d(&[false, true, false])?;
 
-    let sums = tensor.sum_dimensions(&[0]).unwrap().squeeze().unwrap();
-    println!("{}", sums);
+    let c = a.binary_tensor_map(&b, |l, r| l || r)?;
+    let d = a.binary_tensor_map(&b, |l, r| l && r)?;
+
+    println!("{}", c);
+    println!("{}", d);
+
+    Ok(())
 }

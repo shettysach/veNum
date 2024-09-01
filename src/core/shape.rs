@@ -1,5 +1,5 @@
 use crate::Res;
-use std::{cmp::max, collections::HashSet, ops::Mul};
+use std::{cmp::max, cmp::Ordering, collections::HashSet, iter::repeat, ops::Mul};
 
 #[derive(Clone)]
 pub(crate) struct Shape {
@@ -52,7 +52,7 @@ impl Shape {
         let positive = match self
             .strides
             .first()
-            .ok_or_else(|| "Strides are empty. Unable to reshape/view.".to_string())?
+            .ok_or_else(|| String::from("Strides are empty. Unable to reshape/view."))?
         {
             Stride::Positive(_) => true,
             Stride::Negative(_) => false,
@@ -77,27 +77,40 @@ impl Shape {
     }
 
     pub(crate) fn squeeze(&self) -> Res<Shape> {
-        if self.sizes.iter().product::<usize>() == 1 {
-            Ok(Shape::new(&[1], self.offset))
-        } else {
-            let (sizes, strides) = self
-                .sizes
-                .iter()
-                .zip(self.strides.iter())
-                .filter_map(|(&size, &stride)| {
-                    if size != 1 {
-                        Some((size, stride))
-                    } else {
-                        None
-                    }
-                })
-                .unzip();
+        if self.numel() == 1 {
+            return Ok(Shape::new(&[1], self.offset));
+        }
 
-            Ok(Shape {
-                sizes,
-                strides,
-                offset: self.offset,
-            })
+        let (sizes, strides) = self
+            .sizes
+            .iter()
+            .zip(&self.strides)
+            .filter_map(|(&size, &stride)| (size != 1).then_some((size, stride)))
+            .collect();
+
+        Ok(Shape {
+            sizes,
+            strides,
+            offset: self.offset,
+        })
+    }
+
+    pub(crate) fn unsqueeze(&self, expansion: usize) -> Res<Shape> {
+        let ndims = self.ndims();
+
+        match expansion.cmp(&ndims) {
+            Ordering::Equal => Ok(self.clone()),
+            Ordering::Less => Err(format!(
+                "Current ndims ({}) is greater than expanded ndims ({}).",
+                ndims, expansion
+            )),
+            Ordering::Greater => {
+                let ones_len = expansion - ndims;
+                let mut sizes = self.sizes.to_vec();
+                sizes.splice(..0, repeat(1).take(ones_len));
+
+                Ok(Shape::new(&sizes, 0))
+            }
         }
     }
 
@@ -120,7 +133,7 @@ impl Shape {
     pub fn transpose(&self, dim_1: usize, dim_2: usize) -> Res<Shape> {
         let ndims = self.ndims();
         if ndims < 2 {
-            return Err("Transpose requires at least two dimensions".to_string());
+            return Err(String::from("Transpose requires at least two dimensions"));
         }
 
         let mut permutation: Vec<usize> = (0..ndims).collect();
@@ -203,6 +216,7 @@ impl Shape {
     }
 
     pub(crate) fn slice(&self, indices: &[(usize, usize)]) -> Res<Shape> {
+        self.valid_contiguity()?;
         self.valid_ranges(indices)?;
 
         let mut indices = indices.to_vec();
@@ -211,7 +225,7 @@ impl Shape {
         let mut offset = match self
             .strides
             .first()
-            .ok_or_else(|| "Strides are empty. Unable to slice.".to_string())?
+            .ok_or_else(|| String::from("Strides are empty. Unable to slice."))?
         {
             Stride::Positive(_) => self.offset,
             Stride::Negative(_) => self.numel() - 1 - self.offset,
@@ -242,10 +256,12 @@ impl Shape {
     }
 
     pub(crate) fn single_slice(&self, indices: &[Option<usize>]) -> Res<Shape> {
+        self.valid_contiguity()?;
+
         let mut offset = match self
             .strides
             .first()
-            .ok_or_else(|| "Strides are empty. Unable to slice.".to_string())?
+            .ok_or_else(|| String::from("Strides are empty. Unable to slice."))?
         {
             Stride::Positive(_) => self.offset,
             Stride::Negative(_) => self.numel() - 1 - self.offset,
@@ -254,9 +270,9 @@ impl Shape {
         let sizes = self
             .sizes
             .iter()
-            .zip(self.strides.iter())
+            .zip(&self.strides)
             .zip(indices)
-            .map(|((&size, stride), i)| {
+            .map(|((&size, &stride), i)| {
                 if let Some(i) = i {
                     match stride {
                         Stride::Positive(stride_val) => offset += i * stride_val,
@@ -323,6 +339,14 @@ impl Shape {
         true
     }
 
+    pub(crate) fn valid_contiguity(&self) -> Res<()> {
+        if self.is_contiguous() {
+            Ok(())
+        } else {
+            Err("Shape is not contiguous. Use `to_contiguous()`.".to_string())
+        }
+    }
+
     fn matches_size(&self, length: usize) -> Res<()> {
         let num_dimensions = self.ndims();
 
@@ -365,10 +389,13 @@ impl Shape {
 
     fn valid_ranges(&self, indices: &[(usize, usize)]) -> Res<()> {
         for (dimension, index) in indices.iter().enumerate() {
-            let size = self
-                .sizes
-                .get(dimension)
-                .ok_or_else(|| "Indices length is longer than number of dimensions".to_string())?;
+            let size = self.sizes.get(dimension).ok_or_else(|| {
+                format!(
+                    "Index ({}) is greater than ndims ({}).",
+                    dimension,
+                    self.ndims()
+                )
+            })?;
 
             if index.0 > index.1 && index.1 > 0 {
                 return Err(format!(

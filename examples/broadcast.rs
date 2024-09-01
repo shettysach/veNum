@@ -9,8 +9,8 @@ fn main() -> Res<()> {
     println!("b");
     println!("{}", &b);
 
-    println!("a * b");
     let prod = (&a * &b)?;
+    println!("a * b");
     println!("{}", &prod);
 
     Ok(())

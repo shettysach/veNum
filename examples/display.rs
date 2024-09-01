@@ -1,8 +1,6 @@
 use venum::{Res, Tensor};
 
 fn main() -> Res<()> {
-    let now = std::time::Instant::now();
-
     let tensor_1d = Tensor::<u16>::linspace(0, 2, 3)?;
     println!("{}", tensor_1d);
 
@@ -14,9 +12,6 @@ fn main() -> Res<()> {
 
     let tensor_4d = Tensor::<u32>::linspace(0, 80, 81)?.reshape(&[3; 4])?;
     println!("{}", tensor_4d);
-
-    let end = now.elapsed();
-    println!("{:?}", end);
 
     Ok(())
 }

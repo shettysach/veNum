@@ -1,3 +1,11 @@
+```console
+               __
+__   _____  /\ \ \_   _ _ __ ___
+\ \ / / _ \/  \/ / | | | '_ ` _ \
+ \ V /  __/ /\  /| |_| | | | | | |
+  \_/ \___\_\ \/  \__,_|_| |_| |_|
+```
+
 - [>] NdArray
   - [x] Index tensor
   - [x] Permute tensor
@@ -18,10 +26,13 @@
   - [>] Matmul
     - [x] 2D
     - [x] ND
+  - [>] Conv & cross-correlation
   - [ ] Padding tensor
-  - [ ] Conv
   - [ ] Other ndarray functions
+  - [ ] Boolean-macro conflict
+
 - [>] Optimisations
 - [x] Error handling 
+
 - [ ] Autograd
 - [ ] GPU

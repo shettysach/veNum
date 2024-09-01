@@ -1,15 +1,13 @@
 use crate::{
     core::{
+        cpu::one::One,
         indexer::IndexIterator,
         shape::{Shape, Stride},
         slicer::SliceIterator,
     },
     Res,
 };
-use std::{
-    iter::{repeat, successors},
-    sync::Arc,
-};
+use std::{iter::successors, sync::Arc};
 
 pub struct Tensor<T> {
     pub(crate) data: Arc<Vec<T>>,
@@ -59,23 +57,34 @@ where
         Tensor::new(&data, sizes)
     }
 
+    pub fn ones(sizes: &[usize]) -> Res<Tensor<T>>
+    where
+        T: One,
+    {
+        Tensor::same(T::one(), sizes)
+    }
+
+    pub fn zeroes(sizes: &[usize]) -> Res<Tensor<T>>
+    where
+        T: Default,
+    {
+        Tensor::same(T::default(), sizes)
+    }
+
     pub fn arange(start: T, end: T, step: T) -> Res<Tensor<T>>
     where
         T: std::ops::Add<Output = T> + PartialOrd,
     {
         let data: Vec<T> = successors(Some(start), |&prev| {
             let current = prev + step;
-            if current < end {
-                Some(current)
-            } else {
-                None
-            }
+            (current < end).then_some(current)
         })
         .collect();
 
         Tensor::new(&data, &[data.len()])
     }
 
+    // TODO: Better method
     pub fn linspace(start: T, end: T, num: u16) -> Res<Tensor<T>>
     where
         T: std::ops::Add<Output = T>
@@ -92,14 +101,32 @@ where
         Tensor::new(&data, &[num as usize])
     }
 
+    pub fn eye(size: usize) -> Res<Tensor<T>>
+    where
+        T: Default + One,
+    {
+        let diagonal = size + 1;
+        let data = (0..size * size)
+            .map(|elem| {
+                if elem % diagonal == 0 {
+                    T::one()
+                } else {
+                    T::default()
+                }
+            })
+            .collect::<Vec<T>>();
+
+        Tensor::new(&data, &[size, size])
+    }
+
     pub fn to_contiguous(&self) -> Res<Tensor<T>> {
         Ok(Tensor {
-            data: Arc::new(self.data_non_contiguous()?),
+            data: Arc::new(self.data_non_contiguous()),
             shape: Shape::new(&self.shape.sizes, 0),
         })
     }
 
-    pub(crate) fn contiguous_if_not(self) -> Res<Tensor<T>> {
+    pub(crate) fn into_contiguous(self) -> Res<Tensor<T>> {
         if self.is_contiguous() {
             Ok(self)
         } else {
@@ -135,9 +162,9 @@ where
 
     // Data
 
-    pub fn data(&self) -> Res<Vec<T>> {
+    pub fn data(&self) -> Vec<T> {
         if self.is_contiguous() {
-            Ok(self.data_contiguous().to_vec())
+            self.data_contiguous().to_vec()
         } else {
             self.data_non_contiguous()
         }
@@ -149,39 +176,28 @@ where
         &self.data[start..end]
     }
 
-    pub(crate) fn data_non_contiguous(&self) -> Res<Vec<T>> {
+    pub(crate) fn data_non_contiguous(&self) -> Vec<T> {
         IndexIterator::new(&self.shape)
-            .map(|index| self.element(&index))
+            .map(|index| self.element(&index).unwrap())
             .collect()
     }
 
     pub fn element(&self, indices: &[usize]) -> Res<T> {
-        self.data
-            .get(self.shape.element(indices)?)
-            .copied()
-            .ok_or_else(|| format!("Index {:?} is out of bounds.", indices))
+        Ok(self.data[self.shape.element(indices)?])
     }
 
     pub fn slice(&self, indices: &[(usize, usize)]) -> Res<Tensor<T>> {
-        if self.is_contiguous() {
-            Ok(Tensor {
-                data: Arc::clone(&self.data),
-                shape: self.shape.slice(indices)?,
-            })
-        } else {
-            Err("Tensor is not contiguous. Use `to_contiguous()`.".to_string())
-        }
+        Ok(Tensor {
+            data: Arc::clone(&self.data),
+            shape: self.shape.slice(indices)?,
+        })
     }
 
     pub(crate) fn single_slice(&self, indices: &[Option<usize>]) -> Res<Tensor<T>> {
-        if self.is_contiguous() {
-            Ok(Tensor {
-                data: Arc::clone(&self.data),
-                shape: self.shape.single_slice(indices)?,
-            })
-        } else {
-            Err("Tensor is not contiguous. Use `to_contiguous()`.".to_string())
-        }
+        Ok(Tensor {
+            data: Arc::clone(&self.data),
+            shape: self.shape.single_slice(indices)?,
+        })
     }
 
     // Shape
@@ -193,7 +209,7 @@ where
             self.view(sizes)
         } else {
             Ok(Tensor {
-                data: Arc::new(self.data_non_contiguous()?),
+                data: Arc::new(self.data_non_contiguous()),
                 shape: Shape::new(sizes, 0),
             })
         }
@@ -214,6 +230,13 @@ where
         Ok(Tensor {
             data: Arc::clone(&self.data),
             shape: self.shape.squeeze()?,
+        })
+    }
+
+    pub fn unsqueeze(&self, expansion: usize) -> Res<Tensor<T>> {
+        Ok(Tensor {
+            data: Arc::clone(&self.data),
+            shape: self.shape.unsqueeze(expansion)?,
         })
     }
 
@@ -245,24 +268,9 @@ where
         })
     }
 
-    pub fn reshape_then_expand(&self, expansions: &[usize]) -> Res<Tensor<T>> {
-        let resize_len = expansions.len();
-        let numdims = self.ndims();
-
-        if numdims == resize_len {
-            self.expand(expansions)
-        } else {
-            let ones_len = expansions.len() - numdims;
-            let mut sizes = self.sizes().to_vec();
-            sizes.splice(..0, repeat(1).take(ones_len));
-
-            self.reshape(&sizes)?.expand(expansions)
-        }
-    }
-
     // Maps
 
-    pub fn unary_map<R>(&self, f: impl Fn(T) -> R) -> Tensor<R> {
+    pub fn unary_map<R>(&self, f: impl Fn(T) -> R) -> Res<Tensor<R>> {
         let (data, shape) = if self.is_contiguous() {
             (
                 Arc::new(self.data_contiguous().iter().map(|&elem| f(elem)).collect()),
@@ -277,19 +285,19 @@ where
                 Arc::new(
                     IndexIterator::new(&self.shape)
                         .map(|index| {
-                            let elem = self.element(&index).unwrap();
-                            f(elem)
+                            let elem = self.element(&index)?;
+                            Ok(f(elem))
                         })
-                        .collect(),
+                        .collect::<Res<Vec<R>>>()?,
                 ),
                 Shape::new(self.sizes(), 0),
             )
         };
 
-        Tensor { data, shape }
+        Ok(Tensor { data, shape })
     }
 
-    pub fn binary_scalar_map<R>(&self, rhs: T, f: impl Fn(T, T) -> R) -> Tensor<R> {
+    pub fn binary_scalar_map<R>(&self, rhs: T, f: impl Fn(T, T) -> R) -> Res<Tensor<R>> {
         let (data, shape) = if self.is_contiguous() {
             (
                 Arc::new(
@@ -309,16 +317,16 @@ where
                 Arc::new(
                     IndexIterator::new(&self.shape)
                         .map(|index| {
-                            let lhs_elem = self.element(&index).unwrap();
-                            f(lhs_elem, rhs)
+                            let lhs_elem = self.element(&index)?;
+                            Ok(f(lhs_elem, rhs))
                         })
-                        .collect(),
+                        .collect::<Res<Vec<R>>>()?,
                 ),
                 Shape::new(self.sizes(), 0),
             )
         };
 
-        Tensor { data, shape }
+        Ok(Tensor { data, shape })
     }
 
     pub fn binary_tensor_map<R>(&self, rhs: &Tensor<T>, f: impl Fn(T, T) -> R) -> Res<Tensor<R>> {
@@ -366,9 +374,10 @@ where
     fn broadcasted_shapes_map<R>(&self, rhs: &Tensor<T>, f: impl Fn(T, T) -> R) -> Res<Tensor<R>> {
         let sizes = Shape::broadcast(&self.shape.sizes, &rhs.shape.sizes)?;
         let shape = Shape::new(&sizes, 0);
+        let expansion = sizes.len();
 
-        let lhs_broadcasted = self.reshape_then_expand(&sizes)?;
-        let rhs_broadcasted = rhs.reshape_then_expand(&sizes)?;
+        let lhs_broadcasted = self.unsqueeze(expansion)?.expand(&sizes)?;
+        let rhs_broadcasted = rhs.unsqueeze(expansion)?.expand(&sizes)?;
 
         let data = Arc::new(
             IndexIterator::new(&shape)
@@ -383,13 +392,18 @@ where
         Ok(Tensor { data, shape })
     }
 
-    pub fn reduce_map(&self, dimensions: &[usize], f: impl Fn(&Tensor<T>) -> T) -> Res<Tensor<T>> {
+    pub fn reduce_map(
+        &self,
+        dimensions: &[usize],
+        f: impl Fn(&Tensor<T>) -> Res<T>,
+        keepdims: bool,
+    ) -> Res<Tensor<T>> {
         self.shape.valid_dimensions(dimensions)?;
 
-        let data = SliceIterator::new(&self.shape, dimensions)
+        let data = SliceIterator::new(&self.shape, dimensions, keepdims)
             .map(|index| {
                 let dimension_slice = self.single_slice(&index)?;
-                Ok(f(&dimension_slice))
+                f(&dimension_slice)
             })
             .collect::<Res<Vec<T>>>()?;
 
@@ -398,9 +412,23 @@ where
             .sizes
             .iter()
             .enumerate()
-            .map(|(i, &size)| if dimensions.contains(&i) { size } else { 1 })
+            .map(|(d, &size)| match (keepdims, dimensions.contains(&d)) {
+                (true, true) => 1,
+                (true, false) => size,
+                (false, true) => size,
+                (false, false) => 1,
+            })
             .collect();
 
         Tensor::new(&data, &sizes)
+    }
+}
+
+impl<T> PartialEq for Tensor<T>
+where
+    T: Copy + PartialEq,
+{
+    fn eq(&self, rhs: &Tensor<T>) -> bool {
+        self.data() == rhs.data() && self.shape == rhs.shape
     }
 }
