@@ -1,5 +1,10 @@
-use crate::Res;
-use std::{cmp::max, cmp::Ordering, collections::HashSet, iter::repeat, ops::Mul};
+use crate::{Res, Slide};
+use std::{
+    cmp::{max, Ordering},
+    collections::HashSet,
+    iter::repeat,
+    ops::Mul,
+};
 
 #[derive(Clone)]
 pub(crate) struct Shape {
@@ -8,14 +13,14 @@ pub(crate) struct Shape {
     pub offset: usize,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone)]
 pub enum Stride {
     Positive(usize),
     Negative(usize),
 }
 
 impl Shape {
-    pub fn new(sizes: &[usize], offset: usize) -> Shape {
+    pub fn new(sizes: &[usize]) -> Shape {
         let mut current = 1;
         let mut strides: Vec<Stride> = sizes
             .iter()
@@ -31,7 +36,7 @@ impl Shape {
         Shape {
             sizes: sizes.to_vec(),
             strides,
-            offset,
+            offset: 0,
         }
     }
 
@@ -46,6 +51,7 @@ impl Shape {
     // Shape operations
 
     pub(crate) fn view(&self, sizes: &[usize]) -> Res<Shape> {
+        self.valid_contiguity()?;
         self.valid_reshape(sizes)?;
 
         let mut current = 1;
@@ -78,7 +84,11 @@ impl Shape {
 
     pub(crate) fn squeeze(&self) -> Res<Shape> {
         if self.numel() == 1 {
-            return Ok(Shape::new(&[1], self.offset));
+            return Ok(Shape {
+                sizes: vec![1],
+                strides: vec![Stride::Positive(1)],
+                offset: self.offset,
+            });
         }
 
         let (sizes, strides) = self
@@ -109,13 +119,13 @@ impl Shape {
                 let mut sizes = self.sizes.to_vec();
                 sizes.splice(..0, repeat(1).take(ones_len));
 
-                Ok(Shape::new(&sizes, 0))
+                Ok(Shape::new(&sizes))
             }
         }
     }
 
     pub(crate) fn permute(&self, permutation: &[usize]) -> Res<Shape> {
-        self.matches_size(permutation.len())?;
+        self.valid_ndims(permutation.len())?;
         self.valid_dimensions(permutation)?;
 
         let (sizes, strides) = permutation
@@ -136,7 +146,7 @@ impl Shape {
             return Err(String::from("Transpose requires at least two dimensions"));
         }
 
-        let mut permutation: Vec<usize> = (0..ndims).collect();
+        let mut permutation = Vec::from_iter(0..ndims);
         permutation.swap(dim_1, dim_2);
 
         self.permute(&permutation)
@@ -162,7 +172,7 @@ impl Shape {
             .collect();
 
         Ok(Shape {
-            sizes: self.sizes.clone(),
+            sizes: self.sizes.to_vec(),
             strides,
             offset: self.offset,
         })
@@ -172,7 +182,8 @@ impl Shape {
         if self.sizes == expansions {
             return Ok(self.clone());
         }
-        self.matches_size(expansions.len())?;
+
+        self.valid_ndims(expansions.len())?;
 
         let (sizes, strides) = self
             .sizes
@@ -201,9 +212,9 @@ impl Shape {
 
     // Index
 
-    pub(crate) fn element(&self, indices: &[usize]) -> Res<usize> {
-        self.matches_size(indices.len())?;
-        self.valid_indices(indices)?;
+    pub(crate) fn index(&self, indices: &[usize]) -> Res<usize> {
+        self.valid_ndims(indices.len())?;
+        self.valid_indices(indices, &Vec::from_iter(0..indices.len()))?;
 
         Ok(self
             .sizes
@@ -215,9 +226,32 @@ impl Shape {
             + self.offset)
     }
 
+    pub(crate) fn index_dimension(&self, dimensions: &[usize], indices: &[usize]) -> Res<usize> {
+        self.valid_ndims(indices.len())?;
+        self.valid_indices(indices, dimensions)?;
+
+        Ok((0..self.ndims())
+            .map(|dimension| {
+                if let Some(position) = dimensions.iter().position(|&d| d == dimension) {
+                    let index = indices[position];
+                    let size = self.sizes[dimension];
+                    let stride = self.strides[dimension];
+
+                    stride.offset(index, size)
+                } else {
+                    let size = self.sizes[dimension];
+                    let stride = self.strides[dimension];
+
+                    stride.offset(0, size)
+                }
+            })
+            .sum::<usize>()
+            + self.offset)
+    }
+
     pub(crate) fn slice(&self, indices: &[(usize, usize)]) -> Res<Shape> {
         self.valid_contiguity()?;
-        self.valid_ranges(indices)?;
+        self.valid_ranges(indices, &Vec::from_iter(0..indices.len()))?;
 
         let mut indices = indices.to_vec();
         indices.resize(self.ndims(), (0, 0));
@@ -250,12 +284,98 @@ impl Shape {
 
         Ok(Shape {
             sizes,
-            strides: self.strides.clone(),
+            strides: self.strides.to_vec(),
             offset,
         })
     }
 
-    pub(crate) fn single_slice(&self, indices: &[Option<usize>]) -> Res<Shape> {
+    pub(crate) fn slice_dimensions(
+        &self,
+        dimensions: &[usize],
+        indices: &[(usize, usize)],
+    ) -> Res<Shape> {
+        self.valid_contiguity()?;
+        self.valid_dimensions(dimensions)?;
+        self.valid_ranges(indices, dimensions)?;
+
+        let mut offset = match self
+            .strides
+            .first()
+            .ok_or_else(|| String::from("Strides are empty. Unable to slice."))?
+        {
+            Stride::Positive(_) => self.offset,
+            Stride::Negative(_) => self.numel() - 1 - self.offset,
+        };
+
+        // NOTE: better way to find pos / iter ?
+        let sizes = (0..self.ndims())
+            .map(|dimension| {
+                if let Some(position) = dimensions.iter().position(|&d| d == dimension) {
+                    let (start, end) = indices[position];
+                    let end = if end == 0 { self.sizes[dimension] } else { end };
+
+                    match self.strides[dimension] {
+                        Stride::Positive(stride_val) => offset += start * stride_val,
+                        Stride::Negative(stride_val) => offset -= (end - 1) * stride_val,
+                    };
+
+                    end - start
+                } else {
+                    let size = self.sizes[dimension];
+
+                    match self.strides[dimension] {
+                        Stride::Positive(_) => {}
+                        Stride::Negative(stride_val) => offset -= size * stride_val,
+                    };
+
+                    size
+                }
+            })
+            .collect();
+
+        Ok(Shape {
+            sizes,
+            strides: self.strides.to_vec(),
+            offset,
+        })
+    }
+
+    pub(crate) fn pad(&self, padding: &[(usize, usize)]) -> Res<Shape> {
+        let mut padding = padding.to_vec();
+        padding.resize(self.ndims(), (0, 0));
+
+        let sizes = self
+            .sizes
+            .iter()
+            .zip(padding)
+            .map(|(&size, (start, end))| start + size + end)
+            .collect::<Vec<usize>>();
+
+        Ok(Shape::new(&sizes))
+    }
+
+    pub(crate) fn pad_dimensions(
+        &self,
+        padding: &[(usize, usize)],
+        dimensions: &[usize],
+    ) -> Res<Shape> {
+        self.valid_dimensions(dimensions)?;
+
+        let sizes = (0..self.ndims())
+            .map(|dimension| {
+                if let Some(position) = dimensions.iter().position(|&d| d == dimension) {
+                    let (start, end) = padding[position];
+                    start + self.sizes[dimension] + end
+                } else {
+                    self.sizes[dimension]
+                }
+            })
+            .collect::<Vec<usize>>();
+
+        Ok(Shape::new(&sizes))
+    }
+
+    pub(crate) fn slicer(&self, indices: &[Option<usize>]) -> Res<Shape> {
         self.valid_contiguity()?;
 
         let mut offset = match self
@@ -278,6 +398,7 @@ impl Shape {
                         Stride::Positive(stride_val) => offset += i * stride_val,
                         Stride::Negative(stride_val) => offset -= i * stride_val,
                     }
+
                     1
                 } else {
                     size
@@ -287,7 +408,7 @@ impl Shape {
 
         Ok(Shape {
             sizes,
-            strides: self.strides.clone(),
+            strides: self.strides.to_vec(),
             offset,
         })
     }
@@ -347,17 +468,17 @@ impl Shape {
         }
     }
 
-    fn matches_size(&self, length: usize) -> Res<()> {
+    fn valid_ndims(&self, length: usize) -> Res<()> {
         let num_dimensions = self.ndims();
 
         if length != num_dimensions {
-            return Err(format!(
+            Err(format!(
                 "Number of indices ({}) does not match the number of dimensions ({}).",
                 length, num_dimensions
-            ));
+            ))
+        } else {
+            Ok(())
         }
-
-        Ok(())
     }
 
     pub(crate) fn valid_reshape(&self, sizes: &[usize]) -> Res<()> {
@@ -374,8 +495,10 @@ impl Shape {
         Ok(())
     }
 
-    fn valid_indices(&self, indices: &[usize]) -> Res<()> {
-        for (dimension, (&size, &index)) in self.sizes.iter().zip(indices).enumerate() {
+    fn valid_indices(&self, indices: &[usize], dimensions: &[usize]) -> Res<()> {
+        for (&dimension, &index) in dimensions.iter().zip(indices) {
+            let size = self.sizes[dimension];
+
             if index >= size {
                 return Err(format!(
                     "Index {} is out of range for dimension {} (size: {}).",
@@ -387,24 +510,18 @@ impl Shape {
         Ok(())
     }
 
-    fn valid_ranges(&self, indices: &[(usize, usize)]) -> Res<()> {
-        for (dimension, index) in indices.iter().enumerate() {
-            let size = self.sizes.get(dimension).ok_or_else(|| {
-                format!(
-                    "Index ({}) is greater than ndims ({}).",
-                    dimension,
-                    self.ndims()
-                )
-            })?;
+    fn valid_ranges(&self, ranges: &[(usize, usize)], dimensions: &[usize]) -> Res<()> {
+        for (&dimension, index) in dimensions.iter().zip(ranges) {
+            let size = self.sizes[dimension];
 
             if index.0 > index.1 && index.1 > 0 {
                 return Err(format!(
                     "Range start index {} is greater than range end index {}.",
                     index.0, index.1
                 ));
-            } else if &index.0 > size || &index.1 > size {
+            } else if index.0 > size || index.1 > size {
                 return Err(format!(
-                    "Index {:?} is out of range for dimension {} (size: {}).",
+                    "Range {:?} is out of range for dimension {} (size: {}).",
                     index, dimension, size
                 ));
             }
@@ -427,6 +544,53 @@ impl Shape {
                 return Err(format!("Dimension {} repeats.", dimension));
             } else {
                 set.insert(dimension);
+            }
+        }
+
+        Ok(())
+    }
+
+    pub(crate) fn valid_data_length<T>(&self, data: &[T]) -> Res<()> {
+        let data_length = data.len();
+        let numel = self.numel();
+
+        if data_length != numel {
+            Err(format!(
+                "Data length ({}) does not match size of slice ({}).",
+                data_length, numel
+            ))
+        } else {
+            Ok(())
+        }
+    }
+
+    // TODO: Handle cases where kernel > input
+    pub(crate) fn valid_convolution(
+        input_shape: &[usize],
+        kernel_shape: &[usize],
+        mode: &Slide,
+    ) -> Res<()> {
+        match mode {
+            Slide::Valid => {
+                for (&i, &k) in input_shape.iter().zip(kernel_shape) {
+                    if k > i {
+                        return Err(format!(
+                            "Kernel size ({}) is greater than input size ({}), for mode Valid.",
+                            k, i
+                        ));
+                    }
+                }
+            }
+            Slide::Full => {}
+            Slide::Same => {
+                for (&i, &k) in input_shape.iter().zip(kernel_shape) {
+                    if k > i + 1 {
+                        return Err(format!(
+                            "Kernel size ({}) is greater than input size ({}) + 1, for mode Same.",
+                            k, i
+                        ));
+                    }
+                }
             }
         }
 

@@ -1,4 +1,4 @@
-mod conv;
+pub mod conv;
 mod display;
 mod elem_ops;
 mod matmul;

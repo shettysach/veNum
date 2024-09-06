@@ -14,7 +14,7 @@ macro_rules! binary_tensor_ops {
         {
             type Output = Res<Tensor<T>>;
             fn $method(self, rhs: Tensor<T>) -> Self::Output {
-                self.binary_tensor_map(&rhs, |l, r| l $op r)
+                self.zip(&rhs, |l, r| l $op r)
             }
         }
 
@@ -24,7 +24,7 @@ macro_rules! binary_tensor_ops {
         {
             type Output = Res<Tensor<T>>;
             fn $method(self, rhs: &Tensor<T>) -> Self::Output {
-                self.binary_tensor_map(rhs, |l, r| l $op r)
+                self.zip(rhs, |l, r| l $op r)
             }
         }
 
@@ -34,7 +34,7 @@ macro_rules! binary_tensor_ops {
         {
             type Output = Res<Tensor<T>>;
             fn $method(self, rhs: Tensor<T>) -> Self::Output {
-                self.binary_tensor_map(&rhs, |l, r| l $op r)
+                self.zip(&rhs, |l, r| l $op r)
             }
         }
 
@@ -44,7 +44,7 @@ macro_rules! binary_tensor_ops {
         {
             type Output = Res<Tensor<T>>;
             fn $method(self, rhs: &Tensor<T>) -> Self::Output {
-                self.binary_tensor_map(rhs, |l, r| l $op r)
+                self.zip(rhs, |l, r| l $op r)
             }
         }
 
@@ -54,7 +54,7 @@ macro_rules! binary_tensor_ops {
         {
             type Output = Res<Tensor<T>>;
             fn $method(self, rhs: T) -> Self::Output {
-                self.binary_scalar_map(rhs, |l, r| l $op r)
+                self.binary_map(rhs, |l, r| l $op r)
             }
         }
 
@@ -64,7 +64,7 @@ macro_rules! binary_tensor_ops {
         {
             type Output = Res<Tensor<T>>;
             fn $method(self, rhs: T) -> Self::Output {
-                self.binary_scalar_map(rhs, |l, r| l $op r)
+                self.binary_map(rhs, |l, r| l $op r)
             }
         }
     };
@@ -89,7 +89,7 @@ where
             self.data_contiguous().iter().copied().sum()
         } else {
             IndexIterator::new(&self.shape)
-                .map(|index| self.element(&index).unwrap())
+                .map(|index| self.index(&index).unwrap())
                 .sum()
         };
 
@@ -104,7 +104,7 @@ where
             self.data_contiguous().iter().copied().product()
         } else {
             IndexIterator::new(&self.shape)
-                .map(|index| self.element(&index).unwrap())
+                .map(|index| self.index(&index).unwrap())
                 .product()
         };
 
@@ -119,7 +119,7 @@ where
             self.data_contiguous().iter().copied().max()
         } else {
             IndexIterator::new(&self.shape)
-                .map(|index| self.element(&index).unwrap())
+                .map(|index| self.index(&index).unwrap())
                 .max()
         };
 
@@ -134,7 +134,7 @@ where
             self.data_contiguous().iter().copied().min()
         } else {
             IndexIterator::new(&self.shape)
-                .map(|index| self.element(&index).unwrap())
+                .map(|index| self.index(&index).unwrap())
                 .min()
         };
 
@@ -145,28 +145,28 @@ where
     where
         T: Sum<T>,
     {
-        self.reduce_map(dimensions, Tensor::sum, keepdims)
+        self.reduce(dimensions, Tensor::sum, keepdims)
     }
 
     pub fn product_dimensions(&self, dimensions: &[usize], keepdims: bool) -> Res<Tensor<T>>
     where
         T: Product<T>,
     {
-        self.reduce_map(dimensions, Tensor::product, keepdims)
+        self.reduce(dimensions, Tensor::product, keepdims)
     }
 
     pub fn max_dimensions(&self, dimensions: &[usize], keepdims: bool) -> Res<Tensor<T>>
     where
         T: Ord,
     {
-        self.reduce_map(dimensions, Tensor::max, keepdims)
+        self.reduce(dimensions, Tensor::max, keepdims)
     }
 
     pub fn min_dimensions(&self, dimensions: &[usize], keepdims: bool) -> Res<Tensor<T>>
     where
         T: Ord,
     {
-        self.reduce_map(dimensions, Tensor::min, keepdims)
+        self.reduce(dimensions, Tensor::min, keepdims)
     }
 }
 

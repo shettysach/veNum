@@ -1,14 +1,14 @@
 use venum::{Res, Tensor};
 
 fn main() -> Res<()> {
-    let a = Tensor::new_1d(&[true, true, false])?;
-    let b = Tensor::new_1d(&[false, true, false])?;
+    let tensor = Tensor::arange(1, 9, 1)?.view(&[2, 2, 2])?;
+    println!("{}", tensor);
 
-    let c = a.binary_tensor_map(&b, |l, r| l || r)?;
-    let d = a.binary_tensor_map(&b, |l, r| l && r)?;
+    let padded = tensor.pad(0, &[(1, 1)])?;
+    println!("{}", padded);
 
-    println!("{}", c);
-    println!("{}", d);
+    let padded_dimension = tensor.pad_dimensions(0, &[2], &[(1, 1)])?;
+    println!("{}", padded_dimension);
 
     Ok(())
 }

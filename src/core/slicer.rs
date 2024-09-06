@@ -1,6 +1,5 @@
 use crate::core::shape::Shape;
 
-#[derive(Clone)]
 pub struct SliceIterator<'a> {
     shape: &'a Shape,
     indices: Vec<Option<usize>>,

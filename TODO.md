@@ -1,11 +1,3 @@
-```console
-               __
-__   _____  /\ \ \_   _ _ __ ___
-\ \ / / _ \/  \/ / | | | '_ ` _ \
- \ V /  __/ /\  /| |_| | | | | | |
-  \_/ \___\_\ \/  \__,_|_| |_| |_|
-```
-
 - [>] NdArray
   - [x] Index tensor
   - [x] Permute tensor
@@ -24,15 +16,22 @@ __   _____  /\ \ \_   _ _ __ ___
     - [x] Slice after flip all dims
   - [x] Dimension-wise ops
   - [>] Matmul
-    - [x] 2D
-    - [x] ND
+    - [x] 2D (n^3)
+    - [x] ND (n^3)
+    - [ ] Strassen
   - [>] Conv & cross-correlation
-  - [ ] Padding tensor
+    - [>] All types naive 1d and 2d
+    - [?] Generalize for higher dims?
+    - [ ] Handle cases where kernel > input
+    - [ ] FFT
+  - [>] Padding tensor
+    - [?] Better method? 
   - [ ] Other ndarray functions
   - [ ] Boolean-macro conflict
 
 - [>] Optimisations
-- [x] Error handling 
+- [ ] Better error handling (anyhow) 
 
 - [ ] Autograd
+- [ ] SIMD
 - [ ] GPU
