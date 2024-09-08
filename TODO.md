@@ -1,4 +1,4 @@
-- [>] NdArray
+- [x] NdArray
   - [x] Index tensor
   - [x] Permute tensor
   - [x] Broadcast tensors
@@ -19,19 +19,20 @@
     - [x] 2D (n^3)
     - [x] ND (n^3)
     - [ ] Strassen
-  - [>] Conv & cross-correlation
-    - [>] All types naive 1d and 2d
+  - [x] Conv & cross-correlation
+    - [x] All types naive 1d and 2d
     - [?] Generalize for higher dims?
-    - [ ] Handle cases where kernel > input
+    - [x] Replace padding with slicing 
+    - [x] Handle cases where kernel > input
     - [ ] FFT
   - [>] Padding tensor
     - [?] Better method? 
   - [ ] Other ndarray functions
-  - [ ] Boolean-macro conflict
 
 - [>] Optimisations
 - [ ] Better error handling (anyhow) 
 
 - [ ] Autograd
+
 - [ ] SIMD
 - [ ] GPU

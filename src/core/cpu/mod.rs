@@ -1,6 +1,6 @@
 pub mod conv;
 mod display;
-mod elem_ops;
 mod matmul;
 mod one;
+mod ops;
 pub mod tensor;

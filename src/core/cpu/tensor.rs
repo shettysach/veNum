@@ -22,7 +22,7 @@ impl<T> Tensor<T>
 where
     T: Copy,
 {
-    // Init
+    // --- Init ---
 
     pub fn new(data: &[T], sizes: &[usize]) -> Res<Tensor<T>> {
         let data_length = data.len();
@@ -136,7 +136,7 @@ where
         }
     }
 
-    // Data
+    // --- Data ---
 
     pub fn data(&self) -> Vec<T> {
         if self.is_contiguous() {
@@ -146,7 +146,7 @@ where
         }
     }
 
-    pub(crate) fn data_contiguous(&self) -> &[T] {
+    pub fn data_contiguous(&self) -> &[T] {
         let start = self.offset();
         let end = start + self.numel();
         &self.data[start..end]
@@ -162,8 +162,8 @@ where
         Ok(self.data[self.shape.index(indices)?])
     }
 
-    pub fn index_dimension(&self, dimensions: &[usize], indices: &[usize]) -> Res<T> {
-        Ok(self.data[self.shape.index_dimension(dimensions, indices)?])
+    pub fn index_dims(&self, dimensions: &[usize], indices: &[usize]) -> Res<T> {
+        Ok(self.data[self.shape.index_dims(dimensions, indices)?])
     }
 
     pub fn slice(&self, ranges: &[(usize, usize)]) -> Res<Tensor<T>> {
@@ -173,14 +173,10 @@ where
         })
     }
 
-    pub fn slice_dimensions(
-        &self,
-        dimensions: &[usize],
-        ranges: &[(usize, usize)],
-    ) -> Res<Tensor<T>> {
+    pub fn slice_dims(&self, dimensions: &[usize], ranges: &[(usize, usize)]) -> Res<Tensor<T>> {
         Ok(Tensor {
             data: Arc::clone(&self.data),
-            shape: self.shape.slice_dimensions(dimensions, ranges)?,
+            shape: self.shape.slice_dims(dimensions, ranges)?,
         })
     }
 
@@ -195,14 +191,14 @@ where
         })
     }
 
-    pub fn index_assign_dimensions(
+    pub fn index_assign_dims(
         &self,
         new_value: T,
         dimensions: &[usize],
         index: &[usize],
     ) -> Res<Tensor<T>> {
         let mut data = self.data();
-        let offset = self.shape.index_dimension(dimensions, index)?;
+        let offset = self.shape.index_dims(dimensions, index)?;
         data[offset] = new_value;
 
         Ok(Tensor {
@@ -227,13 +223,13 @@ where
         })
     }
 
-    pub fn slice_assign_dimensions(
+    pub fn slice_assign_dims(
         &self,
         new_data: &[T],
         dimensions: &[usize],
         ranges: &[(usize, usize)],
     ) -> Res<Tensor<T>> {
-        let slice_shape = self.shape.slice_dimensions(dimensions, ranges)?;
+        let slice_shape = self.shape.slice_dims(dimensions, ranges)?;
         slice_shape.valid_data_length(new_data)?;
 
         let mut data = self.data();
@@ -262,13 +258,13 @@ where
         tensor.slice_assign(&self.data(), &ranges)
     }
 
-    pub fn pad_dimensions(
+    pub fn pad_dims(
         &self,
         constant: T,
         dimensions: &[usize],
         padding: &[(usize, usize)],
     ) -> Res<Tensor<T>> {
-        let shape = self.shape.pad_dimensions(padding, dimensions)?;
+        let shape = self.shape.pad_dims(padding, dimensions)?;
         let data = Arc::new(vec![constant; shape.numel()]);
         let tensor = Tensor { data, shape };
 
@@ -278,7 +274,7 @@ where
             .map(|(&dimension, &(start, _))| (start, self.shape.sizes[dimension] + start))
             .collect::<Vec<(usize, usize)>>();
 
-        tensor.slice_assign_dimensions(&self.data(), dimensions, &ranges)
+        tensor.slice_assign_dims(&self.data(), dimensions, &ranges)
     }
 
     pub(crate) fn slicer(&self, indices: &[Option<usize>]) -> Res<Tensor<T>> {
@@ -288,7 +284,7 @@ where
         })
     }
 
-    // Reshape
+    // --- Reshape ---
 
     pub fn view(&self, sizes: &[usize]) -> Res<Tensor<T>> {
         Ok(Tensor {
@@ -316,7 +312,7 @@ where
         self.view(sizes).or_else(|_| self.reshape(sizes))
     }
 
-    // Maps, Zips and Reduce
+    // --- Maps, Zips and Reduce ---
 
     pub fn unary_map<R>(&self, f: impl Fn(T) -> R) -> Res<Tensor<R>> {
         let (data, shape) = if self.is_contiguous() {
@@ -476,7 +472,7 @@ where
 }
 
 impl<T> Tensor<T> {
-    // Attributes
+    // --- Attributes ---
 
     pub fn numel(&self) -> usize {
         self.shape.numel()
@@ -502,7 +498,7 @@ impl<T> Tensor<T> {
         self.shape.is_contiguous()
     }
 
-    // Shape
+    // --- Shape ---
 
     pub fn squeeze(&self) -> Res<Tensor<T>> {
         Ok(Tensor {
@@ -547,10 +543,7 @@ impl<T> Tensor<T> {
     }
 
     pub fn flip_all(&self) -> Res<Tensor<T>> {
-        Ok(Tensor {
-            data: Arc::clone(&self.data),
-            shape: self.shape.flip(&Vec::from_iter(0..self.ndims()))?,
-        })
+        self.flip(&Vec::from_iter(0..self.ndims()))
     }
 }
 

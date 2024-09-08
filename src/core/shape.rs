@@ -1,4 +1,4 @@
-use crate::{Res, Slide};
+use crate::Res;
 use std::{
     cmp::{max, Ordering},
     collections::HashSet,
@@ -48,7 +48,7 @@ impl Shape {
         self.sizes.iter().product()
     }
 
-    // Shape operations
+    // --- Shape operations ---
 
     pub(crate) fn view(&self, sizes: &[usize]) -> Res<Shape> {
         self.valid_contiguity()?;
@@ -210,7 +210,7 @@ impl Shape {
         })
     }
 
-    // Index
+    // --- Index, Slice and Pad ---
 
     pub(crate) fn index(&self, indices: &[usize]) -> Res<usize> {
         self.valid_ndims(indices.len())?;
@@ -226,8 +226,7 @@ impl Shape {
             + self.offset)
     }
 
-    pub(crate) fn index_dimension(&self, dimensions: &[usize], indices: &[usize]) -> Res<usize> {
-        self.valid_ndims(indices.len())?;
+    pub(crate) fn index_dims(&self, dimensions: &[usize], indices: &[usize]) -> Res<usize> {
         self.valid_indices(indices, dimensions)?;
 
         Ok((0..self.ndims())
@@ -289,7 +288,7 @@ impl Shape {
         })
     }
 
-    pub(crate) fn slice_dimensions(
+    pub(crate) fn slice_dims(
         &self,
         dimensions: &[usize],
         indices: &[(usize, usize)],
@@ -354,11 +353,7 @@ impl Shape {
         Ok(Shape::new(&sizes))
     }
 
-    pub(crate) fn pad_dimensions(
-        &self,
-        padding: &[(usize, usize)],
-        dimensions: &[usize],
-    ) -> Res<Shape> {
+    pub(crate) fn pad_dims(&self, padding: &[(usize, usize)], dimensions: &[usize]) -> Res<Shape> {
         self.valid_dimensions(dimensions)?;
 
         let sizes = (0..self.ndims())
@@ -413,7 +408,7 @@ impl Shape {
         })
     }
 
-    // Broadcast
+    // --- Broadcast ---
 
     pub(crate) fn broadcast(lhs_sizes: &[usize], rhs_sizes: &[usize]) -> Res<Vec<usize>> {
         let mut lhs_iter = lhs_sizes.iter();
@@ -448,7 +443,7 @@ impl Shape {
         Ok(result)
     }
 
-    // Validation
+    // --- Validation ---
 
     pub(crate) fn is_contiguous(&self) -> bool {
         for i in 0..self.ndims() - 1 {
@@ -564,37 +559,16 @@ impl Shape {
         }
     }
 
-    // TODO: Handle cases where kernel > input
-    pub(crate) fn valid_convolution(
-        input_shape: &[usize],
-        kernel_shape: &[usize],
-        mode: &Slide,
-    ) -> Res<()> {
-        match mode {
-            Slide::Valid => {
-                for (&i, &k) in input_shape.iter().zip(kernel_shape) {
-                    if k > i {
-                        return Err(format!(
-                            "Kernel size ({}) is greater than input size ({}), for mode Valid.",
-                            k, i
-                        ));
-                    }
-                }
-            }
-            Slide::Full => {}
-            Slide::Same => {
-                for (&i, &k) in input_shape.iter().zip(kernel_shape) {
-                    if k > i + 1 {
-                        return Err(format!(
-                            "Kernel size ({}) is greater than input size ({}) + 1, for mode Same.",
-                            k, i
-                        ));
-                    }
-                }
-            }
+    pub(crate) fn greater_input(input: &[usize], kernel: &[usize]) -> Res<bool> {
+        if input.iter().zip(kernel).all(|(&i, &k)| i >= k) {
+            Ok(true)
+        } else if input.iter().zip(kernel).all(|(&i, &k)| k > i) {
+            Ok(false)
+        } else {
+            Err("Neither all elements in input are >= kernel, 
+             nor all elements in kernel are > input."
+                .to_string())
         }
-
-        Ok(())
     }
 }
 

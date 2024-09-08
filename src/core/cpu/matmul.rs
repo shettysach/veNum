@@ -101,7 +101,7 @@ where
             for (rhs_index, rhs_slice) in rhs_iter.iter().enumerate() {
                 let column = rhs.slicer(rhs_slice)?;
                 let product = (&row * &column)?;
-                let product_sum = product.sum_dimensions(&[first, second], true)?;
+                let product_sum = product.sum_dims(&[first, second], true)?;
 
                 product_sum
                     .data_contiguous()

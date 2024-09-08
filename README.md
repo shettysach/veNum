@@ -1,12 +1,26 @@
 <div align="center">
-    <img src="assets/img.png" width="33%">
+    <img src="assets/icon.png" width="33%">
 </div>
 
-- Vectorized N-dimensional numerical arrays.
-- Tensor / Nd Array library
-- Currently capable of creating CPU Tensors of type T, broadcasting operations, Nd matrix multiplication and 1d and 2d convolution / correlation. 
-- Also implements operations such as reshaping, indexing, slicing, padding, expanding, squeezing, unsqueezing, flipping / reversing and permutating  / transposing.
-- WIP
+- Stands for vectorized N-dimensional numerical arrays. Tensor / NdArray library.
+- Currently capable of creating CPU Tensors of type T and performing 
+    - broadcasted addition, subtraction multiplication and division
+    - Nd matrix multiplication
+    - 1d and 2d convolution / correlation.
+- Capable of performing transformations such as 
+    - viewing / reshaping
+    - expanding 
+    - padding
+    - squeezing, unsqueezing 
+    - flipping / reversing 
+    - permutating / transposing
+    - indexing and slicing 
+- Plan on adding autograd, support for other backends and expanding the library.
+
+- Clone the repo and run examples
+```bash
+cargo run --example <example_name> --release
+```
 
 ##### credits
 
@@ -14,6 +28,7 @@
 - [huggingface/candle](https://github.com/huggingface/candle)
 - [minitorch/minitorch](https://github.com/minitorch/minitorch)
 - [nreHieW/r-nn](https://github.com/nreHieW/r-nn)
+- [assets/image.png](https://pixelblock.tumblr.com/post/33847269942/solid-snake-the-legendary-mercenary-former)
 
 ##### resources
 

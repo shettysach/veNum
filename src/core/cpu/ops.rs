@@ -4,9 +4,9 @@ use std::{
     ops::{Add, Div, Mul, Sub},
 };
 
-// Standard binary operations
+// --- Standard binary operations ---
 
-macro_rules! binary_tensor_ops {
+macro_rules! binary_ops {
     ($trait:ident, $method:ident, $op:tt) => {
         impl<T> $trait for Tensor<T>
         where
@@ -70,12 +70,15 @@ macro_rules! binary_tensor_ops {
     };
 }
 
-binary_tensor_ops!(Add, add, +);
-binary_tensor_ops!(Sub, sub, -);
-binary_tensor_ops!(Mul, mul, *);
-binary_tensor_ops!(Div, div, /);
+binary_ops!(Add, add, +);
+binary_ops!(Sub, sub, -);
+binary_ops!(Mul, mul, *);
+binary_ops!(Div, div, /);
 
-// Reduction
+// NOTE: Can implement bitwise ops
+// for bool using the above macro
+
+// --- Reduction operations ---
 
 impl<T> Tensor<T>
 where
@@ -141,28 +144,28 @@ where
         min.ok_or("Empty tensor. No min.".to_string())
     }
 
-    pub fn sum_dimensions(&self, dimensions: &[usize], keepdims: bool) -> Res<Tensor<T>>
+    pub fn sum_dims(&self, dimensions: &[usize], keepdims: bool) -> Res<Tensor<T>>
     where
         T: Sum<T>,
     {
         self.reduce(dimensions, Tensor::sum, keepdims)
     }
 
-    pub fn product_dimensions(&self, dimensions: &[usize], keepdims: bool) -> Res<Tensor<T>>
+    pub fn product_dims(&self, dimensions: &[usize], keepdims: bool) -> Res<Tensor<T>>
     where
         T: Product<T>,
     {
         self.reduce(dimensions, Tensor::product, keepdims)
     }
 
-    pub fn max_dimensions(&self, dimensions: &[usize], keepdims: bool) -> Res<Tensor<T>>
+    pub fn max_dims(&self, dimensions: &[usize], keepdims: bool) -> Res<Tensor<T>>
     where
         T: Ord,
     {
         self.reduce(dimensions, Tensor::max, keepdims)
     }
 
-    pub fn min_dimensions(&self, dimensions: &[usize], keepdims: bool) -> Res<Tensor<T>>
+    pub fn min_dims(&self, dimensions: &[usize], keepdims: bool) -> Res<Tensor<T>>
     where
         T: Ord,
     {
@@ -170,7 +173,7 @@ where
     }
 }
 
-// Operations for floats
+// --- Operations for floats ---
 
 impl Tensor<f32> {
     pub fn ln(&self) -> Res<Tensor<f32>> {
