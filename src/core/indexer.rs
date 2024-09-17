@@ -1,19 +1,17 @@
-use crate::core::shape::Shape;
-
 pub(crate) struct IndexIterator<'a> {
-    shape: &'a Shape,
+    sizes: &'a [usize],
     indices: Vec<usize>,
     current: usize,
     maximum: usize,
 }
 
 impl<'a> IndexIterator<'a> {
-    pub(crate) fn new(shape: &'a Shape) -> Self {
+    pub(crate) fn new(sizes: &'a [usize]) -> Self {
         IndexIterator {
-            shape,
-            indices: vec![0; shape.ndims()],
+            sizes,
+            indices: vec![0; sizes.len()],
             current: 0,
-            maximum: shape.numel(),
+            maximum: sizes.iter().product(),
         }
     }
 }
@@ -28,10 +26,10 @@ impl<'a> Iterator for IndexIterator<'a> {
 
         let next = self.indices.clone();
 
-        for i in (0..self.shape.ndims()).rev() {
+        for i in (0..self.sizes.len()).rev() {
             self.indices[i] += 1;
 
-            if self.indices[i] != self.shape.sizes[i] {
+            if self.indices[i] != self.sizes[i] {
                 break;
             }
 

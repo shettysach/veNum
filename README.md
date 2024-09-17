@@ -4,19 +4,10 @@
 
 - Stands for vectorized N-dimensional numerical arrays. Tensor / NdArray library.
 - Currently capable of creating CPU Tensors of type T and performing 
-    - broadcasted addition, subtraction multiplication and division
-    - Nd matrix multiplication
-    - 1d and 2d convolution / correlation.
-- Capable of performing transformations such as 
-    - viewing / reshaping
-    - expanding 
-    - padding
-    - squeezing, unsqueezing 
-    - flipping / reversing 
-    - permutating / transposing
-    - indexing and slicing 
-- Plan on adding autograd, support for other backends and expanding the library.
-
+    - broadcasted operations
+    - Nd matrix multiplication (naive)
+    - 1d and 2d convolution / correlation (naive)
+- Plan on adding autodiff and expanding the library.
 - Clone the repo and run examples
 ```bash
 cargo run --example <example_name> --release
@@ -28,7 +19,7 @@ cargo run --example <example_name> --release
 - [huggingface/candle](https://github.com/huggingface/candle)
 - [minitorch/minitorch](https://github.com/minitorch/minitorch)
 - [nreHieW/r-nn](https://github.com/nreHieW/r-nn)
-- [assets/image.png](https://pixelblock.tumblr.com/post/33847269942/solid-snake-the-legendary-mercenary-former)
+- [assets/venom.png](https://www.reddit.com/r/metalgearsolid/comments/2xn8f2/i_heard_yall_like_sprites/)
 
 ##### resources
 

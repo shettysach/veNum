@@ -1,7 +1,7 @@
 use crate::{core::indexer::IndexIterator, Res, Tensor};
 use std::{
     iter::{Product, Sum},
-    ops::{Add, Div, Mul, Sub},
+    ops::{Add, BitAnd, BitOr, BitXor, Div, Mul, Sub},
 };
 
 // --- Standard binary operations ---
@@ -75,8 +75,9 @@ binary_ops!(Sub, sub, -);
 binary_ops!(Mul, mul, *);
 binary_ops!(Div, div, /);
 
-// NOTE: Can implement bitwise ops
-// for bool using the above macro
+binary_ops!(BitAnd, bitand, &);
+binary_ops!(BitOr, bitor, |);
+binary_ops!(BitXor, bitxor, ^);
 
 // --- Reduction operations ---
 
@@ -91,7 +92,7 @@ where
         let sum = if self.is_contiguous() {
             self.data_contiguous().iter().copied().sum()
         } else {
-            IndexIterator::new(&self.shape)
+            IndexIterator::new(&self.shape.sizes)
                 .map(|index| self.index(&index).unwrap())
                 .sum()
         };
@@ -106,7 +107,7 @@ where
         let product = if self.is_contiguous() {
             self.data_contiguous().iter().copied().product()
         } else {
-            IndexIterator::new(&self.shape)
+            IndexIterator::new(&self.shape.sizes)
                 .map(|index| self.index(&index).unwrap())
                 .product()
         };
@@ -121,7 +122,7 @@ where
         let max = if self.is_contiguous() {
             self.data_contiguous().iter().copied().max()
         } else {
-            IndexIterator::new(&self.shape)
+            IndexIterator::new(&self.shape.sizes)
                 .map(|index| self.index(&index).unwrap())
                 .max()
         };
@@ -136,7 +137,7 @@ where
         let min = if self.is_contiguous() {
             self.data_contiguous().iter().copied().min()
         } else {
-            IndexIterator::new(&self.shape)
+            IndexIterator::new(&self.shape.sizes)
                 .map(|index| self.index(&index).unwrap())
                 .min()
         };
@@ -224,7 +225,7 @@ impl Tensor<f64> {
     }
 
     pub fn softmax(&self) -> Res<Tensor<f64>> {
-        let exp = &self.exp()?;
-        exp / exp.sum()?
+        let exp = self.exp()?;
+        &exp / exp.sum()?
     }
 }

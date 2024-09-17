@@ -306,7 +306,6 @@ impl Shape {
             Stride::Negative(_) => self.numel() - 1 - self.offset,
         };
 
-        // NOTE: better way to find pos / iter ?
         let sizes = (0..self.ndims())
             .map(|dimension| {
                 if let Some(position) = dimensions.iter().position(|&d| d == dimension) {

@@ -25,7 +25,10 @@ impl<T: Display + Debug + Copy> Display for Tensor<T> {
 
         if (1..=8).contains(&n) {
             let table_format = &format::consts::FORMAT_BOX_CHARS;
-            let precision = 2;
+            let precision = match type_name::<T>() {
+                "bool" => 5,
+                _ => 2,
+            };
 
             let table = if n % 2 == 1 {
                 let row = odd_dimensions(n, self, 0, table_format, precision);

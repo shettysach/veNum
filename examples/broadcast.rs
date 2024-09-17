@@ -5,7 +5,7 @@ fn main() -> Res<()> {
     println!("a");
     println!("{}", &a);
 
-    let b = Tensor::linspace(1, 5, 5)?.reshape(&[5, 1])?;
+    let b = Tensor::linspace(1, 5, 5)?.view(&[1, 5, 1])?;
     println!("b");
     println!("{}", &b);
 

@@ -1,29 +1,27 @@
-use crate::core::shape::Shape;
-
 pub struct SliceIterator<'a> {
-    shape: &'a Shape,
+    sizes: &'a [usize],
     indices: Vec<Option<usize>>,
     current: usize,
     maximum: usize,
 }
 
 impl<'a> SliceIterator<'a> {
-    pub(crate) fn new(shape: &'a Shape, dimensions: &'a [usize], keepdims: bool) -> Self {
+    pub(crate) fn new(sizes: &'a [usize], dimensions: &'a [usize], keepdims: bool) -> Self {
         let mut maximum = 1;
         let indices = if keepdims {
-            (0..shape.ndims())
+            (0..sizes.len())
                 .map(|d| {
                     (!dimensions.contains(&d)).then(|| {
-                        maximum *= shape.sizes[d];
+                        maximum *= sizes[d];
                         0
                     })
                 })
                 .collect()
         } else {
-            (0..shape.ndims())
+            (0..sizes.len())
                 .map(|d| {
                     dimensions.contains(&d).then(|| {
-                        maximum *= shape.sizes[d];
+                        maximum *= sizes[d];
                         0
                     })
                 })
@@ -31,7 +29,7 @@ impl<'a> SliceIterator<'a> {
         };
 
         SliceIterator {
-            shape,
+            sizes,
             indices,
             current: 0,
             maximum,
@@ -54,7 +52,7 @@ impl<'a> Iterator for SliceIterator<'a> {
             if let Some(slice_index) = slice_index.as_mut() {
                 *slice_index += 1;
 
-                if *slice_index < self.shape.sizes[d] {
+                if *slice_index < self.sizes[d] {
                     break;
                 }
 

@@ -1,7 +1,11 @@
-mod cpu;
+pub mod conv;
+mod display;
 mod indexer;
+mod matmul;
+mod one;
+mod ops;
 mod shape;
 mod slicer;
+mod tensor;
 mod tests;
-pub use cpu::conv::Slide;
-pub use cpu::tensor::Tensor;
+pub use tensor::Tensor;

@@ -34,8 +34,8 @@ where
         let (m, l) = (self.sizes()[0], rhs.sizes()[0]);
 
         let (lhs_iter, rhs_iter) = (
-            SliceIterator::new(&self.shape, &[0], false),
-            SliceIterator::new(&rhs.shape, &[0], false).collect::<Vec<_>>(),
+            SliceIterator::new(&self.shape.sizes, &[0], false),
+            SliceIterator::new(&rhs.shape.sizes, &[0], false).collect::<Vec<_>>(),
         );
         let mut data = Vec::with_capacity(m * l);
 
@@ -51,7 +51,7 @@ where
             }
         }
 
-        Tensor::new(&data, &[m, l])
+        Tensor::init(&data, &[m, l])
     }
 
     fn matmul_nd(&self, rhs: &Tensor<T>) -> Res<Tensor<T>> {
@@ -78,7 +78,6 @@ where
 
         let broadcast = &Shape::broadcast(&lhs.sizes()[..second], &rhs.sizes()[..second])?;
 
-        // TODO: Better concatenation
         let (lhs, rhs) = (
             lhs.expand(&[broadcast.as_slice(), &[m, n1]].concat())?
                 .into_contiguous()?,
@@ -88,8 +87,8 @@ where
 
         let slice_dim = &[second];
         let (lhs_iter, rhs_iter) = (
-            SliceIterator::new(&lhs.shape, slice_dim, false),
-            SliceIterator::new(&rhs.shape, slice_dim, false).collect::<Vec<_>>(),
+            SliceIterator::new(&lhs.shape.sizes, slice_dim, false),
+            SliceIterator::new(&rhs.shape.sizes, slice_dim, false).collect::<Vec<_>>(),
         );
 
         let sizes = [broadcast.as_slice(), &[m, l]].concat();
@@ -103,17 +102,13 @@ where
                 let product = (&row * &column)?;
                 let product_sum = product.sum_dims(&[first, second], true)?;
 
-                product_sum
-                    .data_contiguous()
-                    .iter()
-                    .enumerate()
-                    .for_each(|(index, &value)| {
-                        let offset = (index * ml) + (lhs_index * m) + rhs_index;
-                        data[offset] = value
-                    });
+                for (index, &value) in product_sum.data_contiguous().iter().enumerate() {
+                    let offset = (index * ml) + (lhs_index * l) + rhs_index;
+                    data[offset] = value
+                }
             }
         }
 
-        Tensor::new(&data, &sizes)
+        Tensor::init(&data, &sizes)
     }
 }

@@ -11,6 +11,6 @@ Vectorized N-dimensional numerical arrays.
 */
 
 mod core;
-pub use core::Slide;
+pub use core::conv;
 pub use core::Tensor;
 pub type Res<U> = Result<U, String>;
