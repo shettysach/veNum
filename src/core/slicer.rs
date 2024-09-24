@@ -1,11 +1,11 @@
-pub struct SliceIterator<'a> {
+pub struct Slicer<'a> {
     sizes: &'a [usize],
     indices: Vec<Option<usize>>,
     current: usize,
     maximum: usize,
 }
 
-impl<'a> SliceIterator<'a> {
+impl<'a> Slicer<'a> {
     pub(crate) fn new(sizes: &'a [usize], dimensions: &'a [usize], keepdims: bool) -> Self {
         let mut maximum = 1;
         let indices = if keepdims {
@@ -28,7 +28,7 @@ impl<'a> SliceIterator<'a> {
                 .collect()
         };
 
-        SliceIterator {
+        Slicer {
             sizes,
             indices,
             current: 0,
@@ -37,7 +37,7 @@ impl<'a> SliceIterator<'a> {
     }
 }
 
-impl<'a> Iterator for SliceIterator<'a> {
+impl<'a> Iterator for Slicer<'a> {
     type Item = Vec<Option<usize>>;
     fn next(&mut self) -> Option<Self::Item> {
         if self.current == self.maximum {
@@ -45,7 +45,6 @@ impl<'a> Iterator for SliceIterator<'a> {
         }
 
         self.current += 1;
-
         let next = self.indices.clone();
 
         for (d, slice_index) in self.indices.iter_mut().enumerate().rev() {

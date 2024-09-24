@@ -1,4 +1,4 @@
-use crate::{core::indexer::IndexIterator, Res, Tensor};
+use crate::{core::strider::Indexer, Res, Tensor};
 use std::{
     iter::{Product, Sum},
     ops::{Add, BitAnd, BitOr, BitXor, Div, Mul, Sub},
@@ -92,12 +92,19 @@ where
         let sum = if self.is_contiguous() {
             self.data_contiguous().iter().copied().sum()
         } else {
-            IndexIterator::new(&self.shape.sizes)
+            Indexer::new(&self.shape.sizes)
                 .map(|index| self.index(&index).unwrap())
                 .sum()
         };
 
         Ok(sum)
+    }
+
+    pub fn mean(&self) -> Res<T>
+    where
+        T: Sum<T> + Div<T, Output = T> + From<u16>,
+    {
+        Ok(self.sum()? / T::from(self.numel() as u16))
     }
 
     pub fn product(&self) -> Res<T>
@@ -107,7 +114,7 @@ where
         let product = if self.is_contiguous() {
             self.data_contiguous().iter().copied().product()
         } else {
-            IndexIterator::new(&self.shape.sizes)
+            Indexer::new(&self.shape.sizes)
                 .map(|index| self.index(&index).unwrap())
                 .product()
         };
@@ -122,7 +129,7 @@ where
         let max = if self.is_contiguous() {
             self.data_contiguous().iter().copied().max()
         } else {
-            IndexIterator::new(&self.shape.sizes)
+            Indexer::new(&self.shape.sizes)
                 .map(|index| self.index(&index).unwrap())
                 .max()
         };
@@ -137,7 +144,7 @@ where
         let min = if self.is_contiguous() {
             self.data_contiguous().iter().copied().min()
         } else {
-            IndexIterator::new(&self.shape.sizes)
+            Indexer::new(&self.shape.sizes)
                 .map(|index| self.index(&index).unwrap())
                 .min()
         };

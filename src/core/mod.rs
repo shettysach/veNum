@@ -1,11 +1,11 @@
 pub mod conv;
 mod display;
-mod indexer;
+mod elem_ops;
 mod matmul;
 mod one;
-mod ops;
 mod shape;
 mod slicer;
+mod strider;
 mod tensor;
 mod tests;
 pub use tensor::Tensor;

@@ -28,7 +28,7 @@ fn main() -> Res<()> {
         &[
             false, true, false, //
             false, true, true, //
-            false, true, false,
+            false, true, false, //
         ],
         &[3, 3],
     )?;

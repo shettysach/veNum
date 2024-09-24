@@ -18,8 +18,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     )?
     .div(16.0)?;
 
-    let blur = image_tensor.correlate_2d(&blur_kernel, Mode::Same)?;
-    write_image("assets/blur.png", width, height, &blur.data())?;
+    let blur = image_tensor.correlate_2d(&blur_kernel, &[1, 1], Mode::Same)?;
+    write_image(&blur, "assets/blur.png")?;
 
     // Sharpen
 
@@ -32,8 +32,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         &[3, 3],
     )?;
 
-    let sharpen = image_tensor.correlate_2d(&sharpen_kernel, Mode::Same)?;
-    write_image("assets/sharpen.png", width, height, &sharpen.data())?;
+    let sharpen = image_tensor.correlate_2d(&sharpen_kernel, &[1, 1], Mode::Same)?;
+    write_image(&sharpen, "assets/sharpen.png")?;
 
     // Edge
 
@@ -46,8 +46,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         &[3, 3],
     )?;
 
-    let edge = image_tensor.correlate_2d(&edge_kernel, Mode::Same)?;
-    write_image("assets/edge.png", width, height, &edge.data())?;
+    let edge = image_tensor.correlate_2d(&edge_kernel, &[1, 1], Mode::Same)?;
+    write_image(&edge, "assets/edge.png")?;
 
     Ok(())
 }
@@ -56,15 +56,14 @@ fn read_image<P>(path: P) -> Result<(Vec<f32>, u32, u32), ImageError>
 where
     P: AsRef<Path>,
 {
-    let img = image::open(path)?;
-    let rgb_img = img.to_rgb8();
-    let (width, height) = rgb_img.dimensions();
+    let img = image::open(path)?.to_rgb8();
+    let (width, height) = img.dimensions();
 
     let channel_size = (width * height) as usize;
     let channel_size_2 = channel_size * 2;
     let mut f32_data = vec![0.0; channel_size * 3];
 
-    for (i, pixel) in rgb_img.pixels().enumerate() {
+    for (i, pixel) in img.pixels().enumerate() {
         f32_data[i] = pixel[0] as f32;
         f32_data[i + channel_size] = pixel[1] as f32;
         f32_data[i + channel_size_2] = pixel[2] as f32;
@@ -73,10 +72,15 @@ where
     Ok((f32_data, width, height))
 }
 
-fn write_image<P>(path: P, width: u32, height: u32, data: &[f32]) -> Result<(), ImageError>
+fn write_image<P>(tensor: &Tensor<f32>, path: P) -> Result<(), ImageError>
 where
     P: AsRef<Path> + Display,
 {
+    let data = tensor.data();
+    let sizes = tensor.sizes();
+    let width = sizes[2] as u32;
+    let height = sizes[1] as u32;
+
     let channel_size = (width * height) as usize;
     let channel_size_2 = channel_size * 2;
     let mut u8_data = Vec::with_capacity(channel_size * 3);

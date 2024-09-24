@@ -1,5 +1,5 @@
 use crate::{
-    core::{shape::Shape, slicer::SliceIterator},
+    core::{shape::Shape, slicer::Slicer},
     Res, Tensor,
 };
 use std::{iter::Sum, ops::Mul};
@@ -34,8 +34,8 @@ where
         let (m, l) = (self.sizes()[0], rhs.sizes()[0]);
 
         let (lhs_iter, rhs_iter) = (
-            SliceIterator::new(&self.shape.sizes, &[0], false),
-            SliceIterator::new(&rhs.shape.sizes, &[0], false).collect::<Vec<_>>(),
+            Slicer::new(&self.shape.sizes, &[0], false),
+            Slicer::new(&rhs.shape.sizes, &[0], false).collect::<Vec<_>>(),
         );
         let mut data = Vec::with_capacity(m * l);
 
@@ -87,8 +87,8 @@ where
 
         let slice_dim = &[second];
         let (lhs_iter, rhs_iter) = (
-            SliceIterator::new(&lhs.shape.sizes, slice_dim, false),
-            SliceIterator::new(&rhs.shape.sizes, slice_dim, false).collect::<Vec<_>>(),
+            Slicer::new(&lhs.shape.sizes, slice_dim, false),
+            Slicer::new(&rhs.shape.sizes, slice_dim, false).collect::<Vec<_>>(),
         );
 
         let sizes = [broadcast.as_slice(), &[m, l]].concat();

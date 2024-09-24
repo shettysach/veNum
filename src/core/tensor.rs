@@ -1,9 +1,9 @@
 use crate::{
     core::{
-        indexer::IndexIterator,
         one::One,
         shape::{Shape, Stride},
-        slicer::SliceIterator,
+        slicer::Slicer,
+        strider::Indexer,
     },
     Res,
 };
@@ -155,7 +155,7 @@ where
     }
 
     pub(crate) fn data_non_contiguous(&self) -> Vec<T> {
-        IndexIterator::new(&self.shape.sizes)
+        Indexer::new(&self.shape.sizes)
             .map(|index| self.index(&index).unwrap())
             .collect()
     }
@@ -264,7 +264,7 @@ where
             )
         } else {
             (
-                IndexIterator::new(&self.shape.sizes)
+                Indexer::new(&self.shape.sizes)
                     .map(|index| {
                         let elem = self.index(&index)?;
                         Ok(f(elem))
@@ -295,7 +295,7 @@ where
             )
         } else {
             (
-                IndexIterator::new(&self.shape.sizes)
+                Indexer::new(&self.shape.sizes)
                     .map(|index| {
                         let lhs_elem = self.index(&index)?;
                         Ok(f(lhs_elem, rhs))
@@ -335,7 +335,7 @@ where
             )
         } else {
             (
-                IndexIterator::new(&self.shape.sizes)
+                Indexer::new(&self.shape.sizes)
                     .map(|index| {
                         let lhs_elem = self.index(&index)?;
                         let rhs_elem = rhs.index(&index)?;
@@ -361,16 +361,34 @@ where
         let rhs_broadcasted = rhs.unsqueeze(expansion)?.expand(&sizes)?;
 
         let data = Arc::new(
-            IndexIterator::new(&shape.sizes)
+            Indexer::new(&shape.sizes)
                 .map(|index| {
                     let lhs_elem = lhs_broadcasted.index(&index)?;
                     let rhs_elem = rhs_broadcasted.index(&index)?;
+
                     Ok(f(lhs_elem, rhs_elem))
                 })
                 .collect::<Res<Vec<R>>>()?,
         );
 
         Ok(Tensor { data, shape })
+    }
+
+    pub fn zip_array<R>(&self, rhs: &[T], f: impl Fn(T, T) -> R) -> Res<Tensor<R>> {
+        self.shape.valid_data_length(rhs)?;
+
+        let data = Indexer::new(&self.shape.sizes)
+            .zip(rhs)
+            .map(|(index, &rhs_value)| {
+                let offset = self.shape.index(&index)?;
+                Ok(f(self.data[offset], rhs_value))
+            })
+            .collect::<Res<Vec<R>>>()?;
+
+        Ok(Tensor {
+            data: Arc::new(data),
+            shape: self.shape.clone(),
+        })
     }
 
     pub fn reduce<R>(
@@ -384,7 +402,7 @@ where
     {
         self.shape.valid_dimensions(dimensions)?;
 
-        let data = SliceIterator::new(&self.shape.sizes, dimensions, keepdims)
+        let data = Slicer::new(&self.shape.sizes, dimensions, keepdims)
             .map(|index| {
                 let dimension_slice = self.slicer(&index)?;
                 f(&dimension_slice)
@@ -438,7 +456,7 @@ where
         let slice_shape = self.shape.slice(ranges)?;
 
         let mut data = self.data();
-        for index in IndexIterator::new(&slice_shape.sizes) {
+        for index in Indexer::new(&slice_shape.sizes) {
             let offset = slice_shape.index(&index)?;
             data[offset] = f(data[offset]);
         }
@@ -458,7 +476,7 @@ where
         let mut data = self.data();
         let slice_shape = self.shape.slice_dims(dimensions, ranges)?;
 
-        for index in IndexIterator::new(&slice_shape.sizes) {
+        for index in Indexer::new(&slice_shape.sizes) {
             let offset = slice_shape.index(&index)?;
             data[offset] = f(data[offset]);
         }
@@ -479,7 +497,7 @@ where
         slice_shape.valid_data_length(rhs)?;
 
         let mut data = self.data();
-        for (index, &rhs_value) in IndexIterator::new(&slice_shape.sizes).zip(rhs) {
+        for (index, &rhs_value) in Indexer::new(&slice_shape.sizes).zip(rhs) {
             let offset = slice_shape.index(&index)?;
             data[offset] = f(data[offset], rhs_value);
         }
@@ -501,7 +519,7 @@ where
         slice_shape.valid_data_length(rhs)?;
 
         let mut data = self.data();
-        for (index, &rhs_value) in IndexIterator::new(&slice_shape.sizes).zip(rhs) {
+        for (index, &rhs_value) in Indexer::new(&slice_shape.sizes).zip(rhs) {
             let offset = slice_shape.index(&index)?;
             data[offset] = f(data[offset], rhs_value);
         }

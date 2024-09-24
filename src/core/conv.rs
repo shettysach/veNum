@@ -1,5 +1,5 @@
 use crate::{
-    core::{indexer::IndexIterator, shape::Shape},
+    core::{shape::Shape, strider::Strider},
     Res, Tensor,
 };
 use std::{iter::Sum, ops::Mul};
@@ -14,7 +14,12 @@ impl<T> Tensor<T>
 where
     T: Copy + Mul<Output = T> + Sum<T> + Default,
 {
-    pub fn correlate_1d(&self, kernel: &Tensor<T>, mode: Mode) -> Res<Tensor<T>> {
+    pub fn correlate_1d(
+        &self,
+        kernel: &Tensor<T>,
+        strides: &[usize; 1],
+        mode: Mode,
+    ) -> Res<Tensor<T>> {
         let i_first = self.ndims() - 1;
         let input_width = self.shape.sizes[i_first];
         let input_conv_sizes = &[input_width];
@@ -25,13 +30,13 @@ where
 
         let prod_sum_fn = mode.product_sum_fn(input_conv_sizes, kernel_conv_sizes)?;
 
-        let output_sizes = mode.output_sizes(input_conv_sizes, kernel_conv_sizes);
+        let output_sizes = mode.output_sizes(input_conv_sizes, kernel_conv_sizes, strides);
         let output_width = output_sizes[0];
 
         let sizes = [&self.shape.sizes[..i_first], &output_sizes].concat();
         let mut data = vec![T::default(); sizes.iter().product()];
 
-        for iter_index in 0..output_width {
+        for iter_index in (0..output_width).step_by(strides[0]) {
             let product_sum = prod_sum_fn(
                 (self, kernel),
                 (input_conv_sizes, kernel_conv_sizes),
@@ -48,7 +53,12 @@ where
         Tensor::init(&data, &sizes)
     }
 
-    pub fn correlate_2d(&self, kernel: &Tensor<T>, mode: Mode) -> Res<Tensor<T>> {
+    pub fn correlate_2d(
+        &self,
+        kernel: &Tensor<T>,
+        strides: &[usize; 2],
+        mode: Mode,
+    ) -> Res<Tensor<T>> {
         let n = self.ndims();
         let input_conv_dims = &[n - 2, n - 1];
         let input_conv_sizes = &[
@@ -65,14 +75,14 @@ where
 
         let prod_sum_fn = mode.product_sum_fn(input_conv_sizes, kernel_conv_sizes)?;
 
-        let output_sizes = mode.output_sizes(input_conv_sizes, kernel_conv_sizes);
+        let output_sizes = mode.output_sizes(input_conv_sizes, kernel_conv_sizes, strides);
         let output_conv_sizes = &[output_sizes[0], output_sizes[1]];
         let output_conv_product = output_conv_sizes[0] * output_conv_sizes[1];
 
         let sizes = [&self.shape.sizes[..input_conv_dims[0]], output_conv_sizes].concat();
         let mut data = vec![T::default(); sizes.iter().product()];
 
-        for iter_index in IndexIterator::new(output_conv_sizes) {
+        for iter_index in Strider::new(output_conv_sizes, strides) {
             let product_sum = prod_sum_fn(
                 (self, kernel),
                 (input_conv_sizes, kernel_conv_sizes),
@@ -82,8 +92,8 @@ where
 
             for (index, &value) in product_sum.data_contiguous().iter().enumerate() {
                 let offset = (index * output_conv_product)
-                    + (iter_index[0] * output_conv_sizes[1])
-                    + iter_index[1];
+                    + (iter_index[0] / strides[0] * output_conv_sizes[1])
+                    + iter_index[1] / strides[1];
 
                 data[offset] = value
             }
@@ -92,12 +102,22 @@ where
         Tensor::init(&data, &sizes)
     }
 
-    pub fn convolve_1d(&self, kernel: &Tensor<T>, mode: Mode) -> Res<Tensor<T>> {
-        self.correlate_1d(&kernel.flip_all()?, mode)
+    pub fn convolve_1d(
+        &self,
+        kernel: &Tensor<T>,
+        strides: &[usize; 1],
+        mode: Mode,
+    ) -> Res<Tensor<T>> {
+        self.correlate_1d(&kernel.flip_all()?, strides, mode)
     }
 
-    pub fn convolve_2d(&self, kernel: &Tensor<T>, mode: Mode) -> Res<Tensor<T>> {
-        self.correlate_2d(&kernel.flip_all()?, mode)
+    pub fn convolve_2d(
+        &self,
+        kernel: &Tensor<T>,
+        strides: &[usize; 2],
+        mode: Mode,
+    ) -> Res<Tensor<T>> {
+        self.correlate_2d(&kernel.flip_all()?, strides, mode)
     }
 }
 
@@ -109,17 +129,23 @@ pub type ProductSumFn<T> = fn(
 ) -> Res<Tensor<T>>;
 
 impl Mode {
-    fn output_sizes(&self, input_sizes: &[usize], kernel_sizes: &[usize]) -> Vec<usize> {
-        let output_size_fn: fn(usize, usize) -> usize = match self {
-            Mode::Valid => |i, k| i.abs_diff(k) + 1,
-            Mode::Full => |i, k| i + k - 1,
-            Mode::Same => |i, _| i,
+    fn output_sizes(
+        &self,
+        input_sizes: &[usize],
+        kernel_sizes: &[usize],
+        strides: &[usize],
+    ) -> Vec<usize> {
+        let output_size_fn: fn(usize, usize, usize) -> usize = match self {
+            Mode::Valid => |i, k, s| i.abs_diff(k) / s + 1,
+            Mode::Full => |i, k, s| (i + k) / s - 1,
+            Mode::Same => |i, _, s| i / s,
         };
 
         input_sizes
             .iter()
             .zip(kernel_sizes)
-            .map(|(&i, &k)| output_size_fn(i, k))
+            .zip(strides)
+            .map(|((&i, &k), &s)| output_size_fn(i, k, s))
             .collect()
     }
 
@@ -133,7 +159,7 @@ impl Mode {
     {
         Ok(match self {
             Mode::Valid => {
-                if Shape::greater_input(input_sizes, kernel_sizes)? {
+                if Shape::larger_input(input_sizes, kernel_sizes)? {
                     Mode::valid_input_product_sum::<T>
                 } else {
                     Mode::valid_kernel_product_sum::<T>

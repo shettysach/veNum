@@ -550,7 +550,7 @@ impl Shape {
 
         if data_length != numel {
             Err(format!(
-                "Data length ({}) does not match size of slice ({}).",
+                "Data length ({}) does not match size of tensor data ({}).",
                 data_length, numel
             ))
         } else {
@@ -558,7 +558,7 @@ impl Shape {
         }
     }
 
-    pub(crate) fn greater_input(input: &[usize], kernel: &[usize]) -> Res<bool> {
+    pub(crate) fn larger_input(input: &[usize], kernel: &[usize]) -> Res<bool> {
         if input.iter().zip(kernel).all(|(&i, &k)| i >= k) {
             Ok(true)
         } else if input.iter().zip(kernel).all(|(&i, &k)| k > i) {
