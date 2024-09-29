@@ -1,16 +1,18 @@
 #[cfg(test)]
 mod core_tests {
-    use crate::{Res, Tensor};
+    use crate::{core::utils::Res, Tensor};
 
     #[test]
     fn same_memory() -> Res<()> {
+        use std::sync::Arc;
+
         let tensor = Tensor::new_1d(&[1, 2, 3, 4, 5, 6, 7, 8, 9])?;
         let view = tensor.view(&[3, 3])?;
         let slice = tensor.slice(&[(3, 7)])?;
 
-        let tensor_data_ptr = std::sync::Arc::as_ptr(&tensor.data);
-        let view_data_ptr = std::sync::Arc::as_ptr(&view.data);
-        let slice_data_ptr = std::sync::Arc::as_ptr(&slice.data);
+        let tensor_data_ptr = Arc::as_ptr(&tensor.data);
+        let view_data_ptr = Arc::as_ptr(&view.data);
+        let slice_data_ptr = Arc::as_ptr(&slice.data);
 
         assert_eq!(tensor_data_ptr, slice_data_ptr);
         assert_eq!(tensor_data_ptr, view_data_ptr);

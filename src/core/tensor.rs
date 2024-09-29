@@ -1,54 +1,46 @@
 use crate::{
+    core::utils::Res,
     core::{
-        one::One,
+        errors::*,
+        iters::{Indexer, Slicer},
         shape::{Shape, Stride},
-        slicer::Slicer,
-        strider::Indexer,
+        utils::cast_usize,
     },
-    Res,
 };
-use std::{
-    iter::successors,
-    ops::{Add, Div, Mul, Sub},
-    sync::Arc,
-};
+use num_traits::{FromPrimitive, NumOps, One, Zero};
+use std::{fmt::Debug, iter::successors, ops::Add, sync::Arc};
 
 pub struct Tensor<T> {
     pub(crate) data: Arc<Vec<T>>,
     pub(crate) shape: Shape,
 }
 
-impl<T> Tensor<T>
-where
-    T: Copy,
-{
+impl<T: Copy> Tensor<T> {
     // --- Init ---
 
-    pub(crate) fn init(data: &[T], sizes: &[usize]) -> Res<Tensor<T>> {
-        let arc_data = Arc::new(data.to_vec());
-
-        Ok(Tensor {
-            data: Arc::clone(&arc_data),
+    pub(crate) fn init(data: Vec<T>, sizes: &[usize]) -> Tensor<T> {
+        Tensor {
+            data: Arc::new(data),
             shape: Shape::new(sizes),
-        })
+        }
     }
 
-    pub fn new(data: &[T], sizes: &[usize]) -> Res<Tensor<T>> {
+    pub fn new(data: &[T], sizes: &[usize]) -> Result<Tensor<T>, InvalidDataLengthError> {
         let data_length = data.len();
         let tensor_size = sizes.iter().product();
 
         if data_length != tensor_size {
-            return Err(format!(
-                "Data length ({}) does not match size of tensor ({}).",
-                data_length, tensor_size
-            ));
+            return Err(InvalidDataLengthError {
+                data_length,
+                tensor_size,
+            });
         }
 
-        Tensor::init(data, sizes)
+        Ok(Tensor::init(data.to_vec(), sizes))
     }
 
-    pub fn new_1d(data: &[T]) -> Res<Tensor<T>> {
-        Tensor::init(data, &[data.len()])
+    pub fn new_1d(data: &[T]) -> Result<Tensor<T>, PhantomError> {
+        Ok(Tensor::init(data.to_vec(), &[data.len()]))
     }
 
     pub fn scalar(data: T) -> Res<Tensor<T>> {
@@ -62,52 +54,55 @@ where
         })
     }
 
-    pub fn same(element: T, size: usize) -> Res<Tensor<T>> {
-        Tensor::init(&vec![element; size], &[size])
+    pub fn same(element: T, size: usize) -> Result<Tensor<T>, PhantomError> {
+        Ok(Tensor::init(vec![element; size], &[size]))
     }
 
-    pub fn zeroes(size: usize) -> Res<Tensor<T>>
+    pub fn zeroes(size: usize) -> Result<Tensor<T>, PhantomError>
     where
-        T: Default,
+        T: Zero,
     {
-        Tensor::same(T::default(), size)
+        Tensor::same(T::zero(), size)
     }
 
-    pub fn ones(size: usize) -> Res<Tensor<T>>
+    pub fn ones(size: usize) -> Result<Tensor<T>, PhantomError>
     where
         T: One,
     {
         Tensor::same(T::one(), size)
     }
 
-    pub fn arange(start: T, end: T, step: T) -> Res<Tensor<T>>
+    pub fn arange(start: T, end: T, step: T) -> Result<Tensor<T>, PhantomError>
     where
         T: Add<Output = T> + PartialOrd,
     {
-        let data: Vec<T> = successors(Some(start), |&prev| {
+        let data = successors(Some(start), |&prev| {
             let current = prev + step;
             (current < end).then_some(current)
         })
-        .collect();
+        .collect::<Vec<T>>();
+        let data_len = data.len();
 
-        Tensor::init(&data, &[data.len()])
+        Ok(Tensor::init(data, &[data_len]))
     }
 
-    pub fn linspace(start: T, end: T, num: u16) -> Res<Tensor<T>>
+    pub fn linspace(start: T, end: T, num: usize) -> Result<Tensor<T>, UsizeCastError>
     where
-        T: Add<Output = T> + Sub<Output = T> + Mul<Output = T> + Div<Output = T> + From<u16>,
+        T: NumOps + FromPrimitive + Debug,
     {
-        let step = (end - start) / T::from(num - 1);
-        let data = (0..num)
-            .map(|i| start + step * i.into())
+        let num_casted = cast_usize::<T>(num - 1)?;
+        let step = (end - start) / num_casted;
+
+        let data = successors(Some(start), |&prev| Some(prev + step))
+            .take(num)
             .collect::<Vec<T>>();
 
-        Tensor::init(&data, &[num as usize])
+        Ok(Tensor::init(data, &[num]))
     }
 
-    pub fn eye(size: usize) -> Res<Tensor<T>>
+    pub fn eye(size: usize) -> Result<Tensor<T>, PhantomError>
     where
-        T: Default + One,
+        T: Zero + One,
     {
         let diagonal = size + 1;
         let data = (0..size * size)
@@ -115,22 +110,22 @@ where
                 if elem % diagonal == 0 {
                     T::one()
                 } else {
-                    T::default()
+                    T::zero()
                 }
             })
             .collect::<Vec<T>>();
 
-        Tensor::init(&data, &[size, size])
+        Ok(Tensor::init(data, &[size, size]))
     }
 
-    pub fn to_contiguous(&self) -> Res<Tensor<T>> {
+    pub fn to_contiguous(&self) -> Result<Tensor<T>, PhantomError> {
         Ok(Tensor {
             data: Arc::new(self.data_non_contiguous()),
             shape: Shape::new(&self.shape.sizes),
         })
     }
 
-    pub(crate) fn into_contiguous(self) -> Res<Tensor<T>> {
+    pub(crate) fn into_contiguous(self) -> Result<Tensor<T>, PhantomError> {
         if self.is_contiguous() {
             Ok(self)
         } else {
@@ -156,30 +151,36 @@ where
 
     pub(crate) fn data_non_contiguous(&self) -> Vec<T> {
         Indexer::new(&self.shape.sizes)
-            .map(|index| self.index(&index).unwrap())
+            .map(|index| self.idx(&index))
             .collect()
     }
 
-    pub fn index(&self, indices: &[usize]) -> Res<T> {
+    pub(crate) fn idx(&self, indices: &[usize]) -> T {
+        self.data[self.shape.idx(indices)]
+    }
+
+    pub fn index(&self, indices: &[usize]) -> Result<T, IndexError> {
         Ok(self.data[self.shape.index(indices)?])
     }
 
-    pub fn index_dims(&self, dimensions: &[usize], indices: &[usize]) -> Res<T> {
+    pub fn index_dims(&self, dimensions: &[usize], indices: &[usize]) -> Result<T, IndexError> {
         Ok(self.data[self.shape.index_dims(dimensions, indices)?])
     }
 
-    pub fn slice(&self, ranges: &[(usize, usize)]) -> Res<Tensor<T>> {
-        Ok(Tensor {
-            data: Arc::clone(&self.data),
-            shape: self.shape.slice(ranges)?,
-        })
+    // --- New Data, New Shape ---
+
+    pub fn reshape(&self, sizes: &[usize]) -> Res<Tensor<T>> {
+        self.shape.valid_reshape(sizes)?;
+
+        Ok(Tensor::init(self.data_non_contiguous(), sizes))
     }
 
-    pub fn slice_dims(&self, dimensions: &[usize], ranges: &[(usize, usize)]) -> Res<Tensor<T>> {
-        Ok(Tensor {
-            data: Arc::clone(&self.data),
-            shape: self.shape.slice_dims(dimensions, ranges)?,
-        })
+    pub fn flatten(&self) -> Res<Tensor<T>> {
+        self.reshape(&[self.numel()])
+    }
+
+    pub fn view_else_reshape(&self, sizes: &[usize]) -> Res<Tensor<T>> {
+        self.view(sizes).or_else(|_| self.reshape(sizes))
     }
 
     pub fn pad(&self, constant: T, padding: &[(usize, usize)]) -> Res<Tensor<T>> {
@@ -215,41 +216,6 @@ where
         tensor.slice_zip_dims(&self.data(), |_, new| new, dimensions, &ranges)
     }
 
-    pub(crate) fn slicer(&self, indices: &[Option<usize>]) -> Res<Tensor<T>> {
-        Ok(Tensor {
-            data: Arc::clone(&self.data),
-            shape: self.shape.slicer(indices)?,
-        })
-    }
-
-    // --- Reshape ---
-
-    pub fn view(&self, sizes: &[usize]) -> Res<Tensor<T>> {
-        Ok(Tensor {
-            data: Arc::clone(&self.data),
-            shape: self.shape.view(sizes)?,
-        })
-    }
-
-    pub fn ravel(&self) -> Res<Tensor<T>> {
-        self.view(&[self.numel()])
-    }
-
-    pub fn reshape(&self, sizes: &[usize]) -> Res<Tensor<T>> {
-        Ok(Tensor {
-            data: Arc::new(self.data_non_contiguous()),
-            shape: Shape::new(sizes),
-        })
-    }
-
-    pub fn flatten(&self) -> Res<Tensor<T>> {
-        self.reshape(&[self.numel()])
-    }
-
-    pub fn view_else_reshape(&self, sizes: &[usize]) -> Res<Tensor<T>> {
-        self.view(sizes).or_else(|_| self.reshape(sizes))
-    }
-
     // --- Maps, Zips and Reduce ---
 
     pub fn unary_map<R>(&self, f: impl Fn(T) -> R) -> Res<Tensor<R>> {
@@ -266,10 +232,10 @@ where
             (
                 Indexer::new(&self.shape.sizes)
                     .map(|index| {
-                        let elem = self.index(&index)?;
-                        Ok(f(elem))
+                        let elem = self.idx(&index);
+                        f(elem)
                     })
-                    .collect::<Res<Vec<R>>>()?,
+                    .collect(),
                 Shape::new(self.sizes()),
             )
         };
@@ -297,10 +263,10 @@ where
             (
                 Indexer::new(&self.shape.sizes)
                     .map(|index| {
-                        let lhs_elem = self.index(&index)?;
-                        Ok(f(lhs_elem, rhs))
+                        let lhs_elem = self.idx(&index);
+                        f(lhs_elem, rhs)
                     })
-                    .collect::<Res<Vec<R>>>()?,
+                    .collect(),
                 Shape::new(self.sizes()),
             )
         };
@@ -337,11 +303,12 @@ where
             (
                 Indexer::new(&self.shape.sizes)
                     .map(|index| {
-                        let lhs_elem = self.index(&index)?;
-                        let rhs_elem = rhs.index(&index)?;
-                        Ok(f(lhs_elem, rhs_elem))
+                        let lhs_elem = self.idx(&index);
+                        let rhs_elem = rhs.idx(&index);
+
+                        f(lhs_elem, rhs_elem)
                     })
-                    .collect::<Res<Vec<R>>>()?,
+                    .collect(),
                 Shape::new(self.sizes()),
             )
         };
@@ -363,25 +330,27 @@ where
         let data = Arc::new(
             Indexer::new(&shape.sizes)
                 .map(|index| {
-                    let lhs_elem = lhs_broadcasted.index(&index)?;
-                    let rhs_elem = rhs_broadcasted.index(&index)?;
+                    let lhs_elem = lhs_broadcasted.idx(&index);
+                    let rhs_elem = rhs_broadcasted.idx(&index);
 
-                    Ok(f(lhs_elem, rhs_elem))
+                    f(lhs_elem, rhs_elem)
                 })
-                .collect::<Res<Vec<R>>>()?,
+                .collect(),
         );
 
         Ok(Tensor { data, shape })
     }
 
     pub fn zip_array<R>(&self, rhs: &[T], f: impl Fn(T, T) -> R) -> Res<Tensor<R>> {
-        self.shape.valid_data_length(rhs)?;
+        self.shape.valid_data_length(rhs.len())?;
 
         let data = Indexer::new(&self.shape.sizes)
             .zip(rhs)
-            .map(|(index, &rhs_value)| {
+            .map(|(index, &rhs_elem)| {
                 let offset = self.shape.index(&index)?;
-                Ok(f(self.data[offset], rhs_value))
+                let lhs_elem = self.data[offset];
+
+                Ok(f(lhs_elem, rhs_elem))
             })
             .collect::<Res<Vec<R>>>()?;
 
@@ -403,10 +372,7 @@ where
         self.shape.valid_dimensions(dimensions)?;
 
         let data = Slicer::new(&self.shape.sizes, dimensions, keepdims)
-            .map(|index| {
-                let dimension_slice = self.slicer(&index)?;
-                f(&dimension_slice)
-            })
+            .map(|index| f(&self.slicer(&index)?))
             .collect::<Res<Vec<R>>>()?;
 
         let sizes: Vec<usize> = self
@@ -414,15 +380,16 @@ where
             .sizes
             .iter()
             .enumerate()
-            .map(|(d, &size)| match (keepdims, dimensions.contains(&d)) {
-                (true, true) => 1,
-                (true, false) => size,
-                (false, true) => size,
-                (false, false) => 1,
+            .map(|(d, &size)| {
+                if keepdims == dimensions.contains(&d) {
+                    1
+                } else {
+                    size
+                }
             })
             .collect();
 
-        Tensor::init(&data, &sizes)
+        Ok(Tensor::init(data, &sizes))
     }
 
     pub fn index_map(&self, f: impl Fn(T) -> T, index: &[usize]) -> Res<Tensor<T>> {
@@ -457,7 +424,7 @@ where
 
         let mut data = self.data();
         for index in Indexer::new(&slice_shape.sizes) {
-            let offset = slice_shape.index(&index)?;
+            let offset = slice_shape.idx(&index);
             data[offset] = f(data[offset]);
         }
 
@@ -477,7 +444,7 @@ where
         let slice_shape = self.shape.slice_dims(dimensions, ranges)?;
 
         for index in Indexer::new(&slice_shape.sizes) {
-            let offset = slice_shape.index(&index)?;
+            let offset = slice_shape.idx(&index);
             data[offset] = f(data[offset]);
         }
 
@@ -494,11 +461,12 @@ where
         ranges: &[(usize, usize)],
     ) -> Res<Tensor<T>> {
         let slice_shape = self.shape.slice(ranges)?;
-        slice_shape.valid_data_length(rhs)?;
+        slice_shape.valid_data_length(rhs.len())?;
 
         let mut data = self.data();
+
         for (index, &rhs_value) in Indexer::new(&slice_shape.sizes).zip(rhs) {
-            let offset = slice_shape.index(&index)?;
+            let offset = slice_shape.idx(&index);
             data[offset] = f(data[offset], rhs_value);
         }
 
@@ -516,11 +484,12 @@ where
         ranges: &[(usize, usize)],
     ) -> Res<Tensor<T>> {
         let slice_shape = self.shape.slice_dims(dimensions, ranges)?;
-        slice_shape.valid_data_length(rhs)?;
+        slice_shape.valid_data_length(rhs.len())?;
 
         let mut data = self.data();
+
         for (index, &rhs_value) in Indexer::new(&slice_shape.sizes).zip(rhs) {
-            let offset = slice_shape.index(&index)?;
+            let offset = slice_shape.idx(&index);
             data[offset] = f(data[offset], rhs_value);
         }
 
@@ -532,6 +501,86 @@ where
 }
 
 impl<T> Tensor<T> {
+    // --- Same Data, Modified Shape ---
+
+    pub fn view(&self, sizes: &[usize]) -> Res<Tensor<T>> {
+        Ok(Tensor {
+            data: Arc::clone(&self.data),
+            shape: self.shape.view(sizes)?,
+        })
+    }
+
+    pub fn ravel(&self) -> Res<Tensor<T>> {
+        self.view(&[self.numel()])
+    }
+
+    pub fn squeeze(&self) -> Result<Tensor<T>, PhantomError> {
+        Ok(Tensor {
+            data: Arc::clone(&self.data),
+            shape: self.shape.squeeze()?,
+        })
+    }
+
+    pub fn unsqueeze(&self, unsqueezed: usize) -> Result<Tensor<T>, UnsqueezeError> {
+        Ok(Tensor {
+            data: Arc::clone(&self.data),
+            shape: self.shape.unsqueeze(unsqueezed)?,
+        })
+    }
+
+    pub fn permute(&self, permutation: &[usize]) -> Res<Tensor<T>> {
+        Ok(Tensor {
+            data: Arc::clone(&self.data),
+            shape: self.shape.permute(permutation)?,
+        })
+    }
+
+    pub fn transpose(&self, dim_1: usize, dim_2: usize) -> Res<Tensor<T>> {
+        Ok(Tensor {
+            data: Arc::clone(&self.data),
+            shape: self.shape.transpose(dim_1, dim_2)?,
+        })
+    }
+
+    pub fn expand(&self, expansions: &[usize]) -> Res<Tensor<T>> {
+        Ok(Tensor {
+            data: Arc::clone(&self.data),
+            shape: self.shape.expand(expansions)?,
+        })
+    }
+
+    pub fn flip(&self, flips: &[usize]) -> Result<Tensor<T>, DimensionError> {
+        Ok(Tensor {
+            data: Arc::clone(&self.data),
+            shape: self.shape.flip(flips)?,
+        })
+    }
+
+    pub fn flip_all(&self) -> Result<Tensor<T>, DimensionError> {
+        self.flip(&Vec::from_iter(0..self.ndims()))
+    }
+
+    pub fn slice(&self, ranges: &[(usize, usize)]) -> Res<Tensor<T>> {
+        Ok(Tensor {
+            data: Arc::clone(&self.data),
+            shape: self.shape.slice(ranges)?,
+        })
+    }
+
+    pub fn slice_dims(&self, dimensions: &[usize], ranges: &[(usize, usize)]) -> Res<Tensor<T>> {
+        Ok(Tensor {
+            data: Arc::clone(&self.data),
+            shape: self.shape.slice_dims(dimensions, ranges)?,
+        })
+    }
+
+    pub(crate) fn slicer(&self, indices: &[Option<usize>]) -> Res<Tensor<T>> {
+        Ok(Tensor {
+            data: Arc::clone(&self.data),
+            shape: self.shape.slicer(indices)?,
+        })
+    }
+
     // --- Attributes ---
 
     pub fn numel(&self) -> usize {
@@ -557,61 +606,10 @@ impl<T> Tensor<T> {
     pub fn is_contiguous(&self) -> bool {
         self.shape.is_contiguous()
     }
-
-    // --- Shape ---
-
-    pub fn squeeze(&self) -> Res<Tensor<T>> {
-        Ok(Tensor {
-            data: Arc::clone(&self.data),
-            shape: self.shape.squeeze()?,
-        })
-    }
-
-    pub fn unsqueeze(&self, expansion: usize) -> Res<Tensor<T>> {
-        Ok(Tensor {
-            data: Arc::clone(&self.data),
-            shape: self.shape.unsqueeze(expansion)?,
-        })
-    }
-
-    pub fn permute(&self, permutation: &[usize]) -> Res<Tensor<T>> {
-        Ok(Tensor {
-            data: Arc::clone(&self.data),
-            shape: self.shape.permute(permutation)?,
-        })
-    }
-
-    pub fn transpose(&self, dim_1: usize, dim_2: usize) -> Res<Tensor<T>> {
-        Ok(Tensor {
-            data: Arc::clone(&self.data),
-            shape: self.shape.transpose(dim_1, dim_2)?,
-        })
-    }
-
-    pub fn expand(&self, expansions: &[usize]) -> Res<Tensor<T>> {
-        Ok(Tensor {
-            data: Arc::clone(&self.data),
-            shape: self.shape.expand(expansions)?,
-        })
-    }
-
-    pub fn flip(&self, flips: &[usize]) -> Res<Tensor<T>> {
-        Ok(Tensor {
-            data: Arc::clone(&self.data),
-            shape: self.shape.flip(flips)?,
-        })
-    }
-
-    pub fn flip_all(&self) -> Res<Tensor<T>> {
-        self.flip(&Vec::from_iter(0..self.ndims()))
-    }
 }
 
-impl<T> PartialEq for Tensor<T>
-where
-    T: Copy + PartialEq,
-{
+impl<T: Copy + PartialEq> PartialEq for Tensor<T> {
     fn eq(&self, rhs: &Tensor<T>) -> bool {
-        self.data() == rhs.data() && self.shape == rhs.shape
+        self.data == rhs.data && self.shape == rhs.shape
     }
 }

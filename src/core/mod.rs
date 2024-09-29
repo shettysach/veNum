@@ -1,11 +1,10 @@
-pub mod conv;
 mod display;
-mod elem_ops;
-mod matmul;
-mod one;
+mod errors;
+mod iters;
+mod ops;
 mod shape;
-mod slicer;
-mod strider;
 mod tensor;
 mod tests;
+mod utils;
+pub use ops::conv;
 pub use tensor::Tensor;

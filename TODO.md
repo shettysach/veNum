@@ -27,6 +27,7 @@
     - [?] FFT
   - [>] Padding tensor
     - [?] Better method? 
+
   - [ ] Kernel / Op Fusion
   - [ ] Other ndarray functions
 
@@ -35,7 +36,7 @@
     - [ ] Rev
 
 - [>] Optimisations
-- [ ] Better error handling (anyhow) 
+- [ ] Better error handling
 
 - [ ] SIMD
 - [ ] GPU

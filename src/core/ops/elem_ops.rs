@@ -1,8 +1,5 @@
-use crate::{core::strider::Indexer, Res, Tensor};
-use std::{
-    iter::{Product, Sum},
-    ops::{Add, BitAnd, BitOr, BitXor, Div, Mul, Sub},
-};
+use crate::{core::utils::Res, Tensor};
+use std::ops::{Add, Div, Mul, Sub};
 
 // --- Standard binary operations ---
 
@@ -74,112 +71,6 @@ binary_ops!(Add, add, +);
 binary_ops!(Sub, sub, -);
 binary_ops!(Mul, mul, *);
 binary_ops!(Div, div, /);
-
-binary_ops!(BitAnd, bitand, &);
-binary_ops!(BitOr, bitor, |);
-binary_ops!(BitXor, bitxor, ^);
-
-// --- Reduction operations ---
-
-impl<T> Tensor<T>
-where
-    T: Copy,
-{
-    pub fn sum(&self) -> Res<T>
-    where
-        T: Sum<T>,
-    {
-        let sum = if self.is_contiguous() {
-            self.data_contiguous().iter().copied().sum()
-        } else {
-            Indexer::new(&self.shape.sizes)
-                .map(|index| self.index(&index).unwrap())
-                .sum()
-        };
-
-        Ok(sum)
-    }
-
-    pub fn mean(&self) -> Res<T>
-    where
-        T: Sum<T> + Div<T, Output = T> + From<u16>,
-    {
-        Ok(self.sum()? / T::from(self.numel() as u16))
-    }
-
-    pub fn product(&self) -> Res<T>
-    where
-        T: Product<T>,
-    {
-        let product = if self.is_contiguous() {
-            self.data_contiguous().iter().copied().product()
-        } else {
-            Indexer::new(&self.shape.sizes)
-                .map(|index| self.index(&index).unwrap())
-                .product()
-        };
-
-        Ok(product)
-    }
-
-    pub fn max(&self) -> Res<T>
-    where
-        T: Ord,
-    {
-        let max = if self.is_contiguous() {
-            self.data_contiguous().iter().copied().max()
-        } else {
-            Indexer::new(&self.shape.sizes)
-                .map(|index| self.index(&index).unwrap())
-                .max()
-        };
-
-        max.ok_or("Empty tensor. No max.".to_string())
-    }
-
-    pub fn min(&self) -> Res<T>
-    where
-        T: Ord,
-    {
-        let min = if self.is_contiguous() {
-            self.data_contiguous().iter().copied().min()
-        } else {
-            Indexer::new(&self.shape.sizes)
-                .map(|index| self.index(&index).unwrap())
-                .min()
-        };
-
-        min.ok_or("Empty tensor. No min.".to_string())
-    }
-
-    pub fn sum_dims(&self, dimensions: &[usize], keepdims: bool) -> Res<Tensor<T>>
-    where
-        T: Sum<T>,
-    {
-        self.reduce(dimensions, Tensor::sum, keepdims)
-    }
-
-    pub fn product_dims(&self, dimensions: &[usize], keepdims: bool) -> Res<Tensor<T>>
-    where
-        T: Product<T>,
-    {
-        self.reduce(dimensions, Tensor::product, keepdims)
-    }
-
-    pub fn max_dims(&self, dimensions: &[usize], keepdims: bool) -> Res<Tensor<T>>
-    where
-        T: Ord,
-    {
-        self.reduce(dimensions, Tensor::max, keepdims)
-    }
-
-    pub fn min_dims(&self, dimensions: &[usize], keepdims: bool) -> Res<Tensor<T>>
-    where
-        T: Ord,
-    {
-        self.reduce(dimensions, Tensor::min, keepdims)
-    }
-}
 
 // --- Operations for floats ---
 

@@ -1,8 +1,9 @@
-use venum::{Res, Tensor};
+use std::error::Error;
+use venum::Tensor;
 
-fn main() -> Res<()> {
-    let a = Tensor::arange(0, 48, 1)?.view(&[4, 2, 3, 2])?;
-    let b = Tensor::arange(0, 12, 1)?.view(&[2, 2, 3])?;
+fn main() -> Result<(), Box<dyn Error>> {
+    let a = Tensor::arange(0, 50, 1)?.view(&[5, 5, 2])?;
+    let b = Tensor::arange(0, 10, 1)?.view(&[2, 5])?;
     println!("{}", a);
     println!("{}", b);
 

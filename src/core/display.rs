@@ -1,4 +1,4 @@
-use crate::Tensor;
+use crate::{core::utils::WithStyle, Tensor};
 use prettytable::{
     format::{self, TableFormat},
     {Cell, Row, Table},
@@ -24,19 +24,14 @@ impl<T: Display + Debug + Copy> Display for Tensor<T> {
         let n = self.shape.ndims();
 
         if (1..=8).contains(&n) {
-            let table_format = &format::consts::FORMAT_BOX_CHARS;
-            let precision = match type_name::<T>() {
-                "bool" => 5,
-                _ => 2,
-            };
+            let style = &format::consts::FORMAT_BOX_CHARS;
+            let precision = 2;
 
             let table = if n % 2 == 1 {
-                let row = odd_dimensions(n, self, 0, table_format, precision);
-                let mut table = Table::init(vec![row]);
-                table.set_format(**table_format);
-                table
+                let row = odd_dimensions(n, self, 0, style, precision);
+                Table::init(vec![row]).with_style(style)
             } else {
-                even_dimensions(n, self, 0, table_format, precision)
+                even_dimensions(n, self, 0, style, precision)
             };
 
             write!(f, "{}", table)?;
@@ -50,7 +45,7 @@ fn odd_dimensions<T>(
     n: usize,
     tensor: &Tensor<T>,
     stride_offset: usize,
-    table_format: &TableFormat,
+    style: &TableFormat,
     precision: usize,
 ) -> Row
 where
@@ -77,7 +72,7 @@ where
             (0..size)
                 .map(|index| {
                     let offset = stride.offset(index, size) + stride_offset;
-                    even_dimensions(n - 1, tensor, offset, table_format, precision)
+                    even_dimensions(n - 1, tensor, offset, style, precision)
                 })
                 .collect::<Vec<Table>>(),
         )
@@ -88,7 +83,7 @@ fn even_dimensions<T>(
     n: usize,
     tensor: &Tensor<T>,
     stride_offset: usize,
-    table_format: &TableFormat,
+    style: &TableFormat,
     precision: usize,
 ) -> Table
 where
@@ -101,11 +96,9 @@ where
     let rows = (0..size)
         .map(|index| {
             let offset = stride.offset(index, size) + stride_offset;
-            odd_dimensions(n - 1, tensor, offset, table_format, precision)
+            odd_dimensions(n - 1, tensor, offset, style, precision)
         })
         .collect();
 
-    let mut table = Table::init(rows);
-    table.set_format(*table_format);
-    table
+    Table::init(rows).with_style(style)
 }

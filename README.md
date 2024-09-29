@@ -2,15 +2,21 @@
     <img src="assets/icon.png" width="33%">
 </div>
 
-- Stands for vectorized N-dimensional numerical arrays. Tensor / NdArray library.
+- Stands for vectorized N-dimensional numerical arrays. Tensor / Nd Array library.
 - Currently capable of creating CPU Tensors of type T and performing 
-    - broadcasted operations
+    - broadcasted algebraic operations
     - Nd matrix multiplication (naive)
-    - 1d and 2d convolution / correlation (naive)
-- Plan on adding autodiff and expanding the library.
+    - 1d and 2d convolution / cross-correlation (naive) with strides
+    - reduction operations such as sum, product, max, min
+    - transformations such as view/reshape, permute/transpose, flip, expand, pad, slice, squeeze, unsqueeze
+
 - Clone the repo and run examples
 ```bash
-cargo run --example <example_name> --release
+cargo run -r --example <example_name>
+```
+- Use as library
+```bash
+cargo add --git https://github.com/shettysach/veNum
 ```
 
 ##### credits

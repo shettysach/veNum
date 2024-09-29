@@ -1,11 +1,12 @@
-use venum::{Res, Tensor};
+use std::error::Error;
+use venum::Tensor;
 
-fn main() -> Res<()> {
+fn main() -> Result<(), Box<dyn Error>> {
     let a = Tensor::linspace(1, 5, 5)?;
     println!("a");
     println!("{}", &a);
 
-    let b = Tensor::linspace(1, 5, 5)?.view(&[1, 5, 1])?;
+    let b = Tensor::linspace(1, 5, 5)?.view(&[5, 1])?;
     println!("b");
     println!("{}", &b);
 

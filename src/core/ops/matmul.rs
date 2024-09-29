@@ -1,6 +1,6 @@
 use crate::{
-    core::{shape::Shape, slicer::Slicer},
-    Res, Tensor,
+    core::{errors::MatmulShapeError, iters::Slicer, shape::Shape, utils::Res},
+    Tensor,
 };
 use std::{iter::Sum, ops::Mul};
 
@@ -10,24 +10,18 @@ where
 {
     pub fn matmul(&self, rhs: &Tensor<T>) -> Res<Tensor<T>> {
         match (self.ndims(), rhs.ndims()) {
-            (0, _) | (_, 0) => Err("Cannot matmul 0d tensor".to_string()),
+            (0, _) | (_, 0) => Err(MatmulShapeError::Matmul0d.into()),
             (1, 1) => Tensor::scalar(self.mul(rhs)?.sum()?),
             (2, 2) => self.matmul_2d(rhs),
             (_, _) => self.matmul_nd(rhs),
         }
     }
 
-    // O(n^3)
-
     fn matmul_2d(&self, rhs: &Tensor<T>) -> Res<Tensor<T>> {
         let (n1, n2) = (self.sizes()[1], rhs.sizes()[0]);
 
         if n1 != n2 {
-            return Err(format!(
-                "Cannot be matrix multiplied. 
-                Shapes: m x n1 and n2 x l, n1 ({}) != n2 ({}).",
-                n1, n2
-            ));
+            return Err(MatmulShapeError::Matmul2d { n1, n2 }.into());
         }
 
         let rhs = rhs.transpose(1, 0)?.to_contiguous()?;
@@ -39,19 +33,18 @@ where
         );
         let mut data = Vec::with_capacity(m * l);
 
-        for lhs_index in lhs_iter {
-            let row = self.slicer(&lhs_index)?;
+        for lhs_slice in lhs_iter {
+            let row = &self.slicer(&lhs_slice)?;
 
-            for rhs_index in rhs_iter.iter() {
-                let column = rhs.slicer(rhs_index)?;
-                let product = (&row * &column)?;
-                let product_sum = product.sum()?;
+            for rhs_slice in rhs_iter.iter() {
+                let column = rhs.slicer(rhs_slice)?;
+                let product_sum = (row * column)?.sum()?;
 
                 data.push(product_sum);
             }
         }
 
-        Tensor::init(&data, &[m, l])
+        Ok(Tensor::init(data, &[m, l]))
     }
 
     fn matmul_nd(&self, rhs: &Tensor<T>) -> Res<Tensor<T>> {
@@ -65,11 +58,7 @@ where
         let (n1, n2) = (lhs.sizes()[first], rhs.sizes()[second]);
 
         if n1 != n2 {
-            return Err(format!(
-                "Cannot be matrix multiplied. 
-                Shapes: m1 x n1 and m2 x n2 x l, n1 ({}) != n2 ({}).",
-                n1, n2
-            ));
+            return Err(MatmulShapeError::MatmulNd { n1, n2 }.into());
         }
 
         let rhs = rhs.transpose(second, first)?.to_contiguous()?;
@@ -77,7 +66,6 @@ where
         let ml = m * l;
 
         let broadcast = &Shape::broadcast(&lhs.sizes()[..second], &rhs.sizes()[..second])?;
-
         let (lhs, rhs) = (
             lhs.expand(&[broadcast.as_slice(), &[m, n1]].concat())?
                 .into_contiguous()?,
@@ -94,21 +82,20 @@ where
         let sizes = [broadcast.as_slice(), &[m, l]].concat();
         let mut data = vec![T::default(); sizes.iter().product()];
 
-        for (lhs_index, lhs_slice) in lhs_iter.enumerate() {
-            let row = lhs.slicer(&lhs_slice)?;
+        for (li, lhs_slice) in lhs_iter.enumerate() {
+            let row = &lhs.slicer(&lhs_slice)?;
 
-            for (rhs_index, rhs_slice) in rhs_iter.iter().enumerate() {
+            for (ri, rhs_slice) in rhs_iter.iter().enumerate() {
                 let column = rhs.slicer(rhs_slice)?;
-                let product = (&row * &column)?;
-                let product_sum = product.sum_dims(&[first, second], true)?;
+                let product_sum = (row * column)?.sum_dims(&[first, second], true)?;
 
-                for (index, &value) in product_sum.data_contiguous().iter().enumerate() {
-                    let offset = (index * ml) + (lhs_index * l) + rhs_index;
+                for (i, &value) in product_sum.data_contiguous().iter().enumerate() {
+                    let offset = (i * ml) + (li * l) + ri;
                     data[offset] = value
                 }
             }
         }
 
-        Tensor::init(&data, &sizes)
+        Ok(Tensor::init(data, &sizes))
     }
 }

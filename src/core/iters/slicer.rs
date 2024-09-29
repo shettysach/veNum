@@ -7,26 +7,21 @@ pub struct Slicer<'a> {
 
 impl<'a> Slicer<'a> {
     pub(crate) fn new(sizes: &'a [usize], dimensions: &'a [usize], keepdims: bool) -> Self {
-        let mut maximum = 1;
-        let indices = if keepdims {
-            (0..sizes.len())
-                .map(|d| {
-                    (!dimensions.contains(&d)).then(|| {
-                        maximum *= sizes[d];
-                        0
-                    })
-                })
-                .collect()
+        let keepdim_fn: fn(&[usize], usize) -> bool = if keepdims {
+            |dimensions, d| !dimensions.contains(&d)
         } else {
-            (0..sizes.len())
-                .map(|d| {
-                    dimensions.contains(&d).then(|| {
-                        maximum *= sizes[d];
-                        0
-                    })
-                })
-                .collect()
+            |dimensions, d| dimensions.contains(&d)
         };
+
+        let mut maximum = 1;
+        let indices = (0..sizes.len())
+            .map(|d| {
+                keepdim_fn(dimensions, d).then(|| {
+                    maximum *= sizes[d];
+                    0
+                })
+            })
+            .collect();
 
         Slicer {
             sizes,

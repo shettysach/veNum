@@ -1,6 +1,7 @@
-use venum::{Res, Tensor};
+use std::error::Error;
+use venum::Tensor;
 
-fn main() -> Res<()> {
+fn main() -> Result<(), Box<dyn Error>> {
     let tensor = Tensor::eye(3)?;
     println!("{}", tensor);
 

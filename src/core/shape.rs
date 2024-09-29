@@ -1,4 +1,4 @@
-use crate::Res;
+use crate::core::{errors::*, utils::Res};
 use std::{
     cmp::{max, Ordering},
     collections::HashSet,
@@ -55,11 +55,7 @@ impl Shape {
         self.valid_reshape(sizes)?;
 
         let mut current = 1;
-        let positive = match self
-            .strides
-            .first()
-            .ok_or_else(|| String::from("Strides are empty. Unable to reshape/view."))?
-        {
+        let positive = match self.strides.first().ok_or(EmptyTensorError::View)? {
             Stride::Positive(_) => true,
             Stride::Negative(_) => false,
         };
@@ -82,48 +78,6 @@ impl Shape {
         })
     }
 
-    pub(crate) fn squeeze(&self) -> Res<Shape> {
-        if self.numel() == 1 {
-            return Ok(Shape {
-                sizes: vec![1],
-                strides: vec![Stride::Positive(1)],
-                offset: self.offset,
-            });
-        }
-
-        let (sizes, strides) = self
-            .sizes
-            .iter()
-            .zip(&self.strides)
-            .filter_map(|(&size, &stride)| (size != 1).then_some((size, stride)))
-            .collect();
-
-        Ok(Shape {
-            sizes,
-            strides,
-            offset: self.offset,
-        })
-    }
-
-    pub(crate) fn unsqueeze(&self, expansion: usize) -> Res<Shape> {
-        let ndims = self.ndims();
-
-        match expansion.cmp(&ndims) {
-            Ordering::Equal => Ok(self.clone()),
-            Ordering::Less => Err(format!(
-                "Current ndims ({}) is greater than expanded ndims ({}).",
-                ndims, expansion
-            )),
-            Ordering::Greater => {
-                let ones_len = expansion - ndims;
-                let mut sizes = self.sizes.to_vec();
-                sizes.splice(..0, repeat(1).take(ones_len));
-
-                Ok(Shape::new(&sizes))
-            }
-        }
-    }
-
     pub(crate) fn permute(&self, permutation: &[usize]) -> Res<Shape> {
         self.valid_ndims(permutation.len())?;
         self.valid_dimensions(permutation)?;
@@ -143,7 +97,7 @@ impl Shape {
     pub fn transpose(&self, dim_1: usize, dim_2: usize) -> Res<Shape> {
         let ndims = self.ndims();
         if ndims < 2 {
-            return Err(String::from("Transpose requires at least two dimensions"));
+            return Err(TransposeError.into());
         }
 
         let mut permutation = Vec::from_iter(0..ndims);
@@ -152,7 +106,7 @@ impl Shape {
         self.permute(&permutation)
     }
 
-    pub(crate) fn flip(&self, flips: &[usize]) -> Res<Shape> {
+    pub(crate) fn flip(&self, flips: &[usize]) -> Result<Shape, DimensionError> {
         self.valid_dimensions(flips)?;
 
         let strides = self
@@ -196,12 +150,10 @@ impl Shape {
                 } else if size == 1 {
                     Ok((expansion, Stride::new(0, true)))
                 } else {
-                    Err(format!(
-                        "Size {size} cannot be expaned to size {expansion}."
-                    ))
+                    Err(ExpansionError { size, expansion })
                 }
             })
-            .collect::<Res<(Vec<usize>, Vec<Stride>)>>()?;
+            .collect::<Result<(Vec<usize>, Vec<Stride>), ExpansionError>>()?;
 
         Ok(Shape {
             sizes,
@@ -210,23 +162,73 @@ impl Shape {
         })
     }
 
+    pub(crate) fn squeeze(&self) -> Result<Shape, PhantomError> {
+        if self.numel() == 1 {
+            return Ok(Shape {
+                sizes: vec![1],
+                strides: vec![Stride::Positive(1)],
+                offset: self.offset,
+            });
+        }
+
+        let (sizes, strides) = self
+            .sizes
+            .iter()
+            .zip(&self.strides)
+            .filter_map(|(&size, &stride)| (size != 1).then_some((size, stride)))
+            .collect();
+
+        Ok(Shape {
+            sizes,
+            strides,
+            offset: self.offset,
+        })
+    }
+
+    pub(crate) fn unsqueeze(&self, unsqueezed: usize) -> Result<Shape, UnsqueezeError> {
+        let current = self.ndims();
+
+        match unsqueezed.cmp(&current) {
+            Ordering::Equal => Ok(self.clone()),
+            Ordering::Less => Err(UnsqueezeError {
+                current,
+                unsqueezed,
+            }),
+            Ordering::Greater => {
+                let ones_len = unsqueezed - current;
+                let mut sizes = self.sizes.to_vec();
+                sizes.splice(..0, repeat(1).take(ones_len));
+
+                Ok(Shape::new(&sizes))
+            }
+        }
+    }
+
     // --- Index, Slice and Pad ---
 
-    pub(crate) fn index(&self, indices: &[usize]) -> Res<usize> {
-        self.valid_ndims(indices.len())?;
-        self.valid_indices(indices, &Vec::from_iter(0..indices.len()))?;
-
-        Ok(self
-            .sizes
+    pub(crate) fn idx(&self, indices: &[usize]) -> usize {
+        self.sizes
             .iter()
             .zip(self.strides.iter())
             .zip(indices)
             .map(|((&size, stride), &index)| stride.offset(index, size))
             .sum::<usize>()
-            + self.offset)
+            + self.offset
     }
 
-    pub(crate) fn index_dims(&self, dimensions: &[usize], indices: &[usize]) -> Res<usize> {
+    pub(crate) fn index(&self, indices: &[usize]) -> Result<usize, IndexError> {
+        let mut indices = indices.to_vec();
+        indices.resize(self.ndims(), 0);
+        self.valid_indices(&indices, &Vec::from_iter(0..indices.len()))?;
+
+        Ok(self.idx(&indices))
+    }
+
+    pub(crate) fn index_dims(
+        &self,
+        dimensions: &[usize],
+        indices: &[usize],
+    ) -> Result<usize, IndexError> {
         self.valid_indices(indices, dimensions)?;
 
         Ok((0..self.ndims())
@@ -250,16 +252,12 @@ impl Shape {
 
     pub(crate) fn slice(&self, indices: &[(usize, usize)]) -> Res<Shape> {
         self.valid_contiguity()?;
-        self.valid_ranges(indices, &Vec::from_iter(0..indices.len()))?;
 
         let mut indices = indices.to_vec();
         indices.resize(self.ndims(), (0, 0));
+        self.valid_ranges(&indices, &Vec::from_iter(0..indices.len()))?;
 
-        let mut offset = match self
-            .strides
-            .first()
-            .ok_or_else(|| String::from("Strides are empty. Unable to slice."))?
-        {
+        let mut offset = match self.strides.first().ok_or(EmptyTensorError::Slice)? {
             Stride::Positive(_) => self.offset,
             Stride::Negative(_) => self.numel() - 1 - self.offset,
         };
@@ -297,11 +295,7 @@ impl Shape {
         self.valid_dimensions(dimensions)?;
         self.valid_ranges(indices, dimensions)?;
 
-        let mut offset = match self
-            .strides
-            .first()
-            .ok_or_else(|| String::from("Strides are empty. Unable to slice."))?
-        {
+        let mut offset = match self.strides.first().ok_or(EmptyTensorError::Slice)? {
             Stride::Positive(_) => self.offset,
             Stride::Negative(_) => self.numel() - 1 - self.offset,
         };
@@ -338,7 +332,7 @@ impl Shape {
         })
     }
 
-    pub(crate) fn pad(&self, padding: &[(usize, usize)]) -> Res<Shape> {
+    pub(crate) fn pad(&self, padding: &[(usize, usize)]) -> Result<Shape, PhantomError> {
         let mut padding = padding.to_vec();
         padding.resize(self.ndims(), (0, 0));
 
@@ -352,7 +346,11 @@ impl Shape {
         Ok(Shape::new(&sizes))
     }
 
-    pub(crate) fn pad_dims(&self, padding: &[(usize, usize)], dimensions: &[usize]) -> Res<Shape> {
+    pub(crate) fn pad_dims(
+        &self,
+        padding: &[(usize, usize)],
+        dimensions: &[usize],
+    ) -> Result<Shape, DimensionError> {
         self.valid_dimensions(dimensions)?;
 
         let sizes = (0..self.ndims())
@@ -372,11 +370,7 @@ impl Shape {
     pub(crate) fn slicer(&self, indices: &[Option<usize>]) -> Res<Shape> {
         self.valid_contiguity()?;
 
-        let mut offset = match self
-            .strides
-            .first()
-            .ok_or_else(|| String::from("Strides are empty. Unable to slice."))?
-        {
+        let mut offset = match self.strides.first().ok_or(EmptyTensorError::Slice)? {
             Stride::Positive(_) => self.offset,
             Stride::Negative(_) => self.numel() - 1 - self.offset,
         };
@@ -409,7 +403,10 @@ impl Shape {
 
     // --- Broadcast ---
 
-    pub(crate) fn broadcast(lhs_sizes: &[usize], rhs_sizes: &[usize]) -> Res<Vec<usize>> {
+    pub(crate) fn broadcast(
+        lhs_sizes: &[usize],
+        rhs_sizes: &[usize],
+    ) -> Result<Vec<usize>, BroadcastError> {
         let mut lhs_iter = lhs_sizes.iter();
         let mut rhs_iter = rhs_sizes.iter();
 
@@ -426,10 +423,10 @@ impl Shape {
                     } else if r == 1 {
                         result.push(l);
                     } else {
-                        return Err(format!(
-                            "Shapes {:?} and {:?} cannot be broadcast together.",
-                            lhs_sizes, rhs_sizes
-                        ));
+                        return Err(BroadcastError {
+                            lhs_sizes: lhs_sizes.to_vec(),
+                            rhs_sizes: rhs_sizes.to_vec(),
+                        });
                     }
                 }
                 (Some(&l), None) => result.push(l),
@@ -454,88 +451,75 @@ impl Shape {
         true
     }
 
-    pub(crate) fn valid_contiguity(&self) -> Res<()> {
+    pub(crate) fn valid_contiguity(&self) -> Result<(), NonContiguousError> {
         if self.is_contiguous() {
             Ok(())
         } else {
-            Err("Shape is not contiguous. Use `to_contiguous()`.".to_string())
+            Err(NonContiguousError)
         }
     }
 
-    fn valid_ndims(&self, length: usize) -> Res<()> {
-        let num_dimensions = self.ndims();
-
-        if length != num_dimensions {
-            Err(format!(
-                "Number of indices ({}) does not match the number of dimensions ({}).",
-                length, num_dimensions
-            ))
-        } else {
-            Ok(())
-        }
-    }
-
-    pub(crate) fn valid_reshape(&self, sizes: &[usize]) -> Res<()> {
-        let data_len = self.numel();
-        let new_size = sizes.iter().product::<usize>();
-
-        if data_len != new_size {
-            return Err(format!(
-            "({:?}) cannot be reshaped to ({:?}). Data length ({}) does not match new length ({}).",
-            self.sizes, sizes, data_len, new_size
-        ));
+    pub(crate) fn valid_reshape(&self, sizes: &[usize]) -> Result<(), ReshapeError> {
+        if self.numel() != sizes.iter().product::<usize>() {
+            return Err(ReshapeError {
+                current_shape: self.sizes.to_vec(),
+                new_shape: sizes.to_vec(),
+            });
         }
 
         Ok(())
     }
 
-    fn valid_indices(&self, indices: &[usize], dimensions: &[usize]) -> Res<()> {
+    fn valid_indices(&self, indices: &[usize], dimensions: &[usize]) -> Result<(), IndexError> {
         for (&dimension, &index) in dimensions.iter().zip(indices) {
             let size = self.sizes[dimension];
 
             if index >= size {
-                return Err(format!(
-                    "Index {} is out of range for dimension {} (size: {}).",
-                    index, dimension, size
-                ));
+                return Err(IndexError::OutOfRange {
+                    index,
+                    dimension,
+                    size,
+                });
             }
         }
 
         Ok(())
     }
 
-    fn valid_ranges(&self, ranges: &[(usize, usize)], dimensions: &[usize]) -> Res<()> {
-        for (&dimension, index) in dimensions.iter().zip(ranges) {
+    fn valid_ranges(
+        &self,
+        ranges: &[(usize, usize)],
+        dimensions: &[usize],
+    ) -> Result<(), RangeError> {
+        for (&dimension, &range) in dimensions.iter().zip(ranges) {
             let size = self.sizes[dimension];
 
-            if index.0 > index.1 && index.1 > 0 {
-                return Err(format!(
-                    "Range start index {} is greater than range end index {}.",
-                    index.0, index.1
-                ));
-            } else if index.0 > size || index.1 > size {
-                return Err(format!(
-                    "Range {:?} is out of range for dimension {} (size: {}).",
-                    index, dimension, size
-                ));
+            if range.0 > range.1 && range.1 > 0 {
+                return Err(RangeError::GreaterStartRange(range.0, range.1));
+            } else if range.0 > size || range.1 > size {
+                return Err(RangeError::OutOfRange {
+                    range,
+                    dimension,
+                    size,
+                });
             }
         }
 
         Ok(())
     }
 
-    pub(crate) fn valid_dimensions(&self, dimensions: &[usize]) -> Res<()> {
-        let max_dimension = self.ndims() - 1;
+    pub(crate) fn valid_dimensions(&self, dimensions: &[usize]) -> Result<(), DimensionError> {
+        let dim_range = self.ndims() - 1;
         let mut set = HashSet::with_capacity(dimensions.len());
 
         for &dimension in dimensions {
-            if max_dimension < dimension {
-                return Err(format!(
-                    "Dimension {} is greater than max range of dimensions ({}).",
-                    dimension, max_dimension
-                ));
+            if dim_range < dimension {
+                return Err(DimensionError::OutOfRange {
+                    dimension,
+                    dim_range,
+                });
             } else if set.contains(&dimension) {
-                return Err(format!("Dimension {} repeats.", dimension));
+                return Err(DimensionError::Repetition(dimension));
             } else {
                 set.insert(dimension);
             }
@@ -544,29 +528,48 @@ impl Shape {
         Ok(())
     }
 
-    pub(crate) fn valid_data_length<T>(&self, data: &[T]) -> Res<()> {
-        let data_length = data.len();
-        let numel = self.numel();
+    fn valid_ndims(&self, num_indices: usize) -> Result<(), IndexError> {
+        let num_dimensions = self.ndims();
 
-        if data_length != numel {
-            Err(format!(
-                "Data length ({}) does not match size of tensor data ({}).",
-                data_length, numel
-            ))
+        if num_indices != num_dimensions {
+            Err(IndexError::IndicesLength {
+                num_indices,
+                num_dimensions,
+            })
         } else {
             Ok(())
         }
     }
 
-    pub(crate) fn larger_input(input: &[usize], kernel: &[usize]) -> Res<bool> {
-        if input.iter().zip(kernel).all(|(&i, &k)| i >= k) {
+    pub(crate) fn valid_data_length(
+        &self,
+        data_length: usize,
+    ) -> Result<(), InvalidDataLengthError> {
+        let numel = self.numel();
+
+        if data_length != numel {
+            Err(InvalidDataLengthError {
+                data_length,
+                tensor_size: numel,
+            })
+        } else {
+            Ok(())
+        }
+    }
+
+    pub(crate) fn conv_larger_input(
+        input_sizes: &[usize],
+        kernel_sizes: &[usize],
+    ) -> Result<bool, ValidConvShapeError> {
+        if input_sizes.iter().zip(kernel_sizes).all(|(&i, &k)| i >= k) {
             Ok(true)
-        } else if input.iter().zip(kernel).all(|(&i, &k)| k > i) {
+        } else if input_sizes.iter().zip(kernel_sizes).all(|(&i, &k)| k >= i) {
             Ok(false)
         } else {
-            Err("Neither all elements in input are >= kernel, 
-             nor all elements in kernel are > input."
-                .to_string())
+            Err(ValidConvShapeError {
+                input_sizes: input_sizes.to_vec(),
+                kernel_sizes: kernel_sizes.to_vec(),
+            })
         }
     }
 }

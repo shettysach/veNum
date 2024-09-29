@@ -1,6 +1,7 @@
-use venum::{conv::Mode, Res, Tensor};
+use std::error::Error;
+use venum::{conv::Mode, Tensor};
 
-fn main() -> Res<()> {
+fn main() -> Result<(), Box<dyn Error>> {
     let input = Tensor::arange(0.0, 32.0, 1.0)?.view(&[2, 4, 4])?;
     let kernel = Tensor::ones(4)?.view(&[2, 2])?;
     let strides = &[1, 1];

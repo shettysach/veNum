@@ -1,6 +1,7 @@
-use venum::{Res, Tensor};
+use std::error::Error;
+use venum::Tensor;
 
-fn main() -> Res<()> {
+fn main() -> Result<(), Box<dyn Error>> {
     let x = Tensor::<f32>::new_1d(&[1.0, 0.0, 1.0, 0.0])?;
     let w = Tensor::<f32>::new_1d(&[0.2, 0.3, -0.4, -0.1])?;
     let b = 0.1;

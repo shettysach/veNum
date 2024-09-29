@@ -1,6 +1,6 @@
 use crate::{
-    core::{shape::Shape, strider::Strider},
-    Res, Tensor,
+    core::{iters::Strider, shape::Shape, utils::Res},
+    Tensor,
 };
 use std::{iter::Sum, ops::Mul};
 
@@ -50,7 +50,7 @@ where
             }
         }
 
-        Tensor::init(&data, &sizes)
+        Ok(Tensor::init(data, &sizes))
     }
 
     pub fn correlate_2d(
@@ -99,7 +99,7 @@ where
             }
         }
 
-        Tensor::init(&data, &sizes)
+        Ok(Tensor::init(data, &sizes))
     }
 
     pub fn convolve_1d(
@@ -159,7 +159,7 @@ impl Mode {
     {
         Ok(match self {
             Mode::Valid => {
-                if Shape::larger_input(input_sizes, kernel_sizes)? {
+                if Shape::conv_larger_input(input_sizes, kernel_sizes)? {
                     Mode::valid_input_product_sum::<T>
                 } else {
                     Mode::valid_kernel_product_sum::<T>
