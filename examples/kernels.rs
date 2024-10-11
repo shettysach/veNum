@@ -1,8 +1,9 @@
+use anyhow::Result;
 use image::{ImageBuffer, ImageError, RgbImage};
-use std::{error::Error, fmt::Display, ops::Div, path::Path};
+use std::{fmt::Display, ops::Div, path::Path};
 use venum::{conv::Mode, Tensor};
 
-fn main() -> Result<(), Box<dyn Error>> {
+fn main() -> Result<()> {
     let (image, width, height) = read_image("assets/venom.png")?;
     let image_tensor = Tensor::new(&image, &[3, height as usize, width as usize])?;
 

@@ -1,7 +1,7 @@
-use std::error::Error;
+use anyhow::Result;
 use venum::Tensor;
 
-fn main() -> Result<(), Box<dyn Error>> {
+fn main() -> Result<()> {
     let a = Tensor::linspace(1, 5, 5)?;
     println!("a");
     println!("{}", &a);

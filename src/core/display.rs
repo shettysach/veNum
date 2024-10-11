@@ -12,7 +12,7 @@ impl<T: Debug + Copy> Debug for Tensor<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         f.debug_struct("Tensor")
             .field("dtype", &type_name::<T>())
-            .field("dims", &self.ndims())
+            .field("dims", &self.rank())
             .field("elems", &self.numel())
             .field("shape", &self.sizes())
             .finish()
@@ -21,7 +21,7 @@ impl<T: Debug + Copy> Debug for Tensor<T> {
 
 impl<T: Display + Debug + Copy> Display for Tensor<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        let n = self.shape.ndims();
+        let n = self.shape.rank();
 
         if (1..=8).contains(&n) {
             let style = &format::consts::FORMAT_BOX_CHARS;
@@ -51,7 +51,7 @@ fn odd_dimensions<T>(
 where
     T: Copy + Display,
 {
-    let dim = tensor.ndims() - n;
+    let dim = tensor.rank() - n;
     let size = tensor.sizes()[dim];
     let stride = tensor.strides()[dim];
 
@@ -89,7 +89,7 @@ fn even_dimensions<T>(
 where
     T: Copy + Display,
 {
-    let dim = tensor.ndims() - n;
+    let dim = tensor.rank() - n;
     let size = tensor.sizes()[dim];
     let stride = tensor.strides()[dim];
 

@@ -56,7 +56,7 @@ pub struct ExpansionError {
 }
 
 #[derive(Error, Debug)]
-#[error("Current ndims ({current}) is greater than unsqueezed ndims ({unsqueezed}).")]
+#[error("Current rank ({current}) is greater than unsqueezed rank ({unsqueezed}).")]
 pub struct UnsqueezeError {
     pub current: usize,
     pub unsqueezed: usize,

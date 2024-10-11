@@ -1,4 +1,5 @@
-use crate::core::{errors::*, utils::Res};
+use crate::core::errors::*;
+use anyhow::Result;
 use std::{
     cmp::{max, Ordering},
     collections::HashSet,
@@ -40,7 +41,7 @@ impl Shape {
         }
     }
 
-    pub(crate) fn ndims(&self) -> usize {
+    pub(crate) fn rank(&self) -> usize {
         self.sizes.len()
     }
 
@@ -50,7 +51,7 @@ impl Shape {
 
     // --- Shape operations ---
 
-    pub(crate) fn view(&self, sizes: &[usize]) -> Res<Shape> {
+    pub(crate) fn view(&self, sizes: &[usize]) -> Result<Shape> {
         self.valid_contiguity()?;
         self.valid_reshape(sizes)?;
 
@@ -78,8 +79,8 @@ impl Shape {
         })
     }
 
-    pub(crate) fn permute(&self, permutation: &[usize]) -> Res<Shape> {
-        self.valid_ndims(permutation.len())?;
+    pub(crate) fn permute(&self, permutation: &[usize]) -> Result<Shape> {
+        self.valid_rank(permutation.len())?;
         self.valid_dimensions(permutation)?;
 
         let (sizes, strides) = permutation
@@ -94,13 +95,13 @@ impl Shape {
         })
     }
 
-    pub fn transpose(&self, dim_1: usize, dim_2: usize) -> Res<Shape> {
-        let ndims = self.ndims();
-        if ndims < 2 {
+    pub fn transpose(&self, dim_1: usize, dim_2: usize) -> Result<Shape> {
+        let rank = self.rank();
+        if rank < 2 {
             return Err(TransposeError.into());
         }
 
-        let mut permutation = Vec::from_iter(0..ndims);
+        let mut permutation = Vec::from_iter(0..rank);
         permutation.swap(dim_1, dim_2);
 
         self.permute(&permutation)
@@ -132,12 +133,12 @@ impl Shape {
         })
     }
 
-    pub(crate) fn expand(&self, expansions: &[usize]) -> Res<Shape> {
+    pub(crate) fn expand(&self, expansions: &[usize]) -> Result<Shape> {
         if self.sizes == expansions {
             return Ok(self.clone());
         }
 
-        self.valid_ndims(expansions.len())?;
+        self.valid_rank(expansions.len())?;
 
         let (sizes, strides) = self
             .sizes
@@ -186,7 +187,7 @@ impl Shape {
     }
 
     pub(crate) fn unsqueeze(&self, unsqueezed: usize) -> Result<Shape, UnsqueezeError> {
-        let current = self.ndims();
+        let current = self.rank();
 
         match unsqueezed.cmp(&current) {
             Ordering::Equal => Ok(self.clone()),
@@ -218,7 +219,7 @@ impl Shape {
 
     pub(crate) fn index(&self, indices: &[usize]) -> Result<usize, IndexError> {
         let mut indices = indices.to_vec();
-        indices.resize(self.ndims(), 0);
+        indices.resize(self.rank(), 0);
         self.valid_indices(&indices, &Vec::from_iter(0..indices.len()))?;
 
         Ok(self.idx(&indices))
@@ -231,7 +232,7 @@ impl Shape {
     ) -> Result<usize, IndexError> {
         self.valid_indices(indices, dimensions)?;
 
-        Ok((0..self.ndims())
+        Ok((0..self.rank())
             .map(|dimension| {
                 if let Some(position) = dimensions.iter().position(|&d| d == dimension) {
                     let index = indices[position];
@@ -250,11 +251,11 @@ impl Shape {
             + self.offset)
     }
 
-    pub(crate) fn slice(&self, indices: &[(usize, usize)]) -> Res<Shape> {
+    pub(crate) fn slice(&self, indices: &[(usize, usize)]) -> Result<Shape> {
         self.valid_contiguity()?;
 
         let mut indices = indices.to_vec();
-        indices.resize(self.ndims(), (0, 0));
+        indices.resize(self.rank(), (0, 0));
         self.valid_ranges(&indices, &Vec::from_iter(0..indices.len()))?;
 
         let mut offset = match self.strides.first().ok_or(EmptyTensorError::Slice)? {
@@ -290,7 +291,7 @@ impl Shape {
         &self,
         dimensions: &[usize],
         indices: &[(usize, usize)],
-    ) -> Res<Shape> {
+    ) -> Result<Shape> {
         self.valid_contiguity()?;
         self.valid_dimensions(dimensions)?;
         self.valid_ranges(indices, dimensions)?;
@@ -300,7 +301,7 @@ impl Shape {
             Stride::Negative(_) => self.numel() - 1 - self.offset,
         };
 
-        let sizes = (0..self.ndims())
+        let sizes = (0..self.rank())
             .map(|dimension| {
                 if let Some(position) = dimensions.iter().position(|&d| d == dimension) {
                     let (start, end) = indices[position];
@@ -334,7 +335,7 @@ impl Shape {
 
     pub(crate) fn pad(&self, padding: &[(usize, usize)]) -> Result<Shape, PhantomError> {
         let mut padding = padding.to_vec();
-        padding.resize(self.ndims(), (0, 0));
+        padding.resize(self.rank(), (0, 0));
 
         let sizes = self
             .sizes
@@ -353,7 +354,7 @@ impl Shape {
     ) -> Result<Shape, DimensionError> {
         self.valid_dimensions(dimensions)?;
 
-        let sizes = (0..self.ndims())
+        let sizes = (0..self.rank())
             .map(|dimension| {
                 if let Some(position) = dimensions.iter().position(|&d| d == dimension) {
                     let (start, end) = padding[position];
@@ -367,7 +368,7 @@ impl Shape {
         Ok(Shape::new(&sizes))
     }
 
-    pub(crate) fn slicer(&self, indices: &[Option<usize>]) -> Res<Shape> {
+    pub(crate) fn slicer(&self, indices: &[Option<usize>]) -> Result<Shape> {
         self.valid_contiguity()?;
 
         let mut offset = match self.strides.first().ok_or(EmptyTensorError::Slice)? {
@@ -442,7 +443,7 @@ impl Shape {
     // --- Validation ---
 
     pub(crate) fn is_contiguous(&self) -> bool {
-        for i in 0..self.ndims() - 1 {
+        for i in 0..self.rank() - 1 {
             if self.strides[i] != self.strides[i + 1] * self.sizes[i + 1] {
                 return false;
             }
@@ -509,7 +510,7 @@ impl Shape {
     }
 
     pub(crate) fn valid_dimensions(&self, dimensions: &[usize]) -> Result<(), DimensionError> {
-        let dim_range = self.ndims() - 1;
+        let dim_range = self.rank() - 1;
         let mut set = HashSet::with_capacity(dimensions.len());
 
         for &dimension in dimensions {
@@ -528,8 +529,8 @@ impl Shape {
         Ok(())
     }
 
-    fn valid_ndims(&self, num_indices: usize) -> Result<(), IndexError> {
-        let num_dimensions = self.ndims();
+    fn valid_rank(&self, num_indices: usize) -> Result<(), IndexError> {
+        let num_dimensions = self.rank();
 
         if num_indices != num_dimensions {
             Err(IndexError::IndicesLength {

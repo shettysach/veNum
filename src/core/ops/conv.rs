@@ -1,7 +1,8 @@
 use crate::{
-    core::{iters::Strider, shape::Shape, utils::Res},
+    core::{iters::Strider, shape::Shape},
     Tensor,
 };
+use anyhow::Result;
 use std::{iter::Sum, ops::Mul};
 
 pub enum Mode {
@@ -19,12 +20,12 @@ where
         kernel: &Tensor<T>,
         strides: &[usize; 1],
         mode: Mode,
-    ) -> Res<Tensor<T>> {
-        let i_first = self.ndims() - 1;
+    ) -> Result<Tensor<T>> {
+        let i_first = self.rank() - 1;
         let input_width = self.shape.sizes[i_first];
         let input_conv_sizes = &[input_width];
 
-        let k_first = kernel.ndims() - 1;
+        let k_first = kernel.rank() - 1;
         let kernel_width = kernel.shape.sizes[k_first];
         let kernel_conv_sizes = &[kernel_width];
 
@@ -58,15 +59,15 @@ where
         kernel: &Tensor<T>,
         strides: &[usize; 2],
         mode: Mode,
-    ) -> Res<Tensor<T>> {
-        let n = self.ndims();
+    ) -> Result<Tensor<T>> {
+        let n = self.rank();
         let input_conv_dims = &[n - 2, n - 1];
         let input_conv_sizes = &[
             self.shape.sizes[input_conv_dims[0]],
             self.shape.sizes[input_conv_dims[1]],
         ];
 
-        let kn = kernel.ndims();
+        let kn = kernel.rank();
         let kernel_conv_dims = &[kn - 2, kn - 1];
         let kernel_conv_sizes = &[
             kernel.shape.sizes[kernel_conv_dims[0]],
@@ -77,7 +78,7 @@ where
 
         let output_sizes = mode.output_sizes(input_conv_sizes, kernel_conv_sizes, strides);
         let output_conv_sizes = &[output_sizes[0], output_sizes[1]];
-        let output_conv_product = output_conv_sizes[0] * output_conv_sizes[1];
+        let output_conv_product = output_conv_sizes.iter().product::<usize>();
 
         let sizes = [&self.shape.sizes[..input_conv_dims[0]], output_conv_sizes].concat();
         let mut data = vec![T::default(); sizes.iter().product()];
@@ -90,6 +91,7 @@ where
                 &iter_index,
             )?;
 
+            // Pointer arithmetic
             for (index, &value) in product_sum.data_contiguous().iter().enumerate() {
                 let offset = (index * output_conv_product)
                     + (iter_index[0] / strides[0] * output_conv_sizes[1])
@@ -107,7 +109,7 @@ where
         kernel: &Tensor<T>,
         strides: &[usize; 1],
         mode: Mode,
-    ) -> Res<Tensor<T>> {
+    ) -> Result<Tensor<T>> {
         self.correlate_1d(&kernel.flip_all()?, strides, mode)
     }
 
@@ -116,7 +118,7 @@ where
         kernel: &Tensor<T>,
         strides: &[usize; 2],
         mode: Mode,
-    ) -> Res<Tensor<T>> {
+    ) -> Result<Tensor<T>> {
         self.correlate_2d(&kernel.flip_all()?, strides, mode)
     }
 }
@@ -126,7 +128,7 @@ pub type ProductSumFn<T> = fn(
     (&[usize], &[usize]),
     (&[usize], &[usize]),
     &[usize],
-) -> Res<Tensor<T>>;
+) -> Result<Tensor<T>>;
 
 impl Mode {
     fn output_sizes(
@@ -153,7 +155,7 @@ impl Mode {
         &self,
         input_sizes: &[usize],
         kernel_sizes: &[usize],
-    ) -> Res<ProductSumFn<T>>
+    ) -> Result<ProductSumFn<T>>
     where
         T: Copy + Mul<Output = T> + Sum<T>,
     {
@@ -173,9 +175,9 @@ impl Mode {
     fn valid_input_product_sum<T>(
         tensors: (&Tensor<T>, &Tensor<T>),
         sizes: (&[usize], &[usize]),
-        dimensions: (&[usize], &[usize]),
+        dims: (&[usize], &[usize]),
         indices: &[usize],
-    ) -> Res<Tensor<T>>
+    ) -> Result<Tensor<T>>
     where
         T: Copy + Mul<Output = T> + Sum<T>,
     {
@@ -185,16 +187,16 @@ impl Mode {
             .map(|(&index, &kernel_size)| (index, index + kernel_size))
             .collect::<Vec<(usize, usize)>>();
 
-        let input_slice = tensors.0.slice_dims(dimensions.0, &ranges)?;
-        (input_slice * tensors.1)?.sum_dims(dimensions.0, true)
+        let input_slice = tensors.0.slice_dims(dims.0, &ranges)?;
+        (input_slice * tensors.1)?.sum_dims(dims.0, true)
     }
 
     fn valid_kernel_product_sum<T>(
         tensors: (&Tensor<T>, &Tensor<T>),
         sizes: (&[usize], &[usize]),
-        dimensions: (&[usize], &[usize]),
+        dims: (&[usize], &[usize]),
         indices: &[usize],
-    ) -> Res<Tensor<T>>
+    ) -> Result<Tensor<T>>
     where
         T: Copy + Mul<Output = T> + Sum<T>,
     {
@@ -210,16 +212,16 @@ impl Mode {
             })
             .collect::<Vec<(usize, usize)>>();
 
-        let kernel_slice = tensors.1.slice_dims(dimensions.0, &ranges)?;
-        (tensors.0 * kernel_slice)?.sum_dims(dimensions.0, true)
+        let kernel_slice = tensors.1.slice_dims(dims.0, &ranges)?;
+        (tensors.0 * kernel_slice)?.sum_dims(dims.0, true)
     }
 
     fn full_product_sum<T>(
         tensors: (&Tensor<T>, &Tensor<T>),
         sizes: (&[usize], &[usize]),
-        dimensions: (&[usize], &[usize]),
+        dims: (&[usize], &[usize]),
         indices: &[usize],
-    ) -> Res<Tensor<T>>
+    ) -> Result<Tensor<T>>
     where
         T: Copy + Mul<Output = T> + Sum<T>,
     {
@@ -248,17 +250,17 @@ impl Mode {
             })
             .collect::<Vec<(usize, usize)>>();
 
-        let input_slice = tensors.0.slice_dims(dimensions.0, &input_ranges)?;
-        let kernel_slice = tensors.1.slice_dims(dimensions.1, &kernel_ranges)?;
-        (input_slice * kernel_slice)?.sum_dims(dimensions.0, true)
+        let input_slice = tensors.0.slice_dims(dims.0, &input_ranges)?;
+        let kernel_slice = tensors.1.slice_dims(dims.1, &kernel_ranges)?;
+        (input_slice * kernel_slice)?.sum_dims(dims.0, true)
     }
 
     fn same_product_sum<T>(
         tensors: (&Tensor<T>, &Tensor<T>),
         sizes: (&[usize], &[usize]),
-        dimensions: (&[usize], &[usize]),
+        dims: (&[usize], &[usize]),
         indices: &[usize],
-    ) -> Res<Tensor<T>>
+    ) -> Result<Tensor<T>>
     where
         T: Copy + Mul<Output = T> + Sum<T>,
     {
@@ -287,8 +289,8 @@ impl Mode {
             })
             .collect::<Vec<(usize, usize)>>();
 
-        let input_slice = tensors.0.slice_dims(dimensions.0, &input_ranges)?;
-        let kernel_slice = tensors.1.slice_dims(dimensions.1, &kernel_ranges)?;
-        (input_slice * kernel_slice)?.sum_dims(dimensions.0, true)
+        let input_slice = tensors.0.slice_dims(dims.0, &input_ranges)?;
+        let kernel_slice = tensors.1.slice_dims(dims.1, &kernel_ranges)?;
+        (input_slice * kernel_slice)?.sum_dims(dims.0, true)
     }
 }

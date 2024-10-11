@@ -1,9 +1,10 @@
 #[cfg(test)]
 mod core_tests {
-    use crate::{core::utils::Res, Tensor};
+    use crate::Tensor;
+    use anyhow::Result;
 
     #[test]
-    fn same_memory() -> Res<()> {
+    fn same_memory() -> Result<()> {
         use std::sync::Arc;
 
         let tensor = Tensor::new_1d(&[1, 2, 3, 4, 5, 6, 7, 8, 9])?;
@@ -21,7 +22,7 @@ mod core_tests {
     }
 
     #[test]
-    fn contiguous() -> Res<()> {
+    fn contiguous() -> Result<()> {
         let a = Tensor::arange(1, 28, 1)?;
         let a = a.reshape(&[3, 3, 3])?;
 
@@ -39,7 +40,7 @@ mod core_tests {
     }
 
     #[test]
-    fn view() -> Res<()> {
+    fn view() -> Result<()> {
         let tensor = Tensor::arange(0, 64, 1)?;
 
         assert!(tensor.view(&[4, 4, 4]).is_ok());
@@ -52,7 +53,7 @@ mod core_tests {
     }
 
     #[test]
-    fn eye() -> Res<()> {
+    fn eye() -> Result<()> {
         let tensor = Tensor::arange(0, 64, 1)?.view(&[4, 4, 4])?;
         let eye = Tensor::eye(4)?;
         let result = tensor.matmul(&eye)?;
@@ -63,7 +64,7 @@ mod core_tests {
     }
 
     #[test]
-    fn empty() -> Res<()> {
+    fn empty() -> Result<()> {
         let empty = Tensor::<u8>::new_1d(&[])?;
 
         let max = empty.max();

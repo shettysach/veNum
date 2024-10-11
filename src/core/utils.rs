@@ -3,9 +3,6 @@ use num_traits::FromPrimitive;
 use prettytable::{format::TableFormat, Table};
 use std::any::type_name;
 
-/// Type alias for ease of use.
-pub(crate) type Res<U> = Result<U, Box<dyn std::error::Error>>;
-
 pub(crate) fn cast_usize<T>(value: usize) -> Result<T, UsizeCastError>
 where
     T: FromPrimitive,

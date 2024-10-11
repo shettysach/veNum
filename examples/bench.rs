@@ -1,7 +1,7 @@
-use std::error::Error;
+use anyhow::Result;
 use venum::Tensor;
 
-fn main() -> Result<(), Box<dyn Error>> {
+fn main() -> Result<()> {
     let a = Tensor::arange(0, 1_000_000, 1)?.view(&[1000, 1000])?;
     let b = Tensor::arange(0, 1_000_000, 1)?.view(&[1000, 1000])?;
 

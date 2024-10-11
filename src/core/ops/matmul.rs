@@ -1,15 +1,16 @@
 use crate::{
-    core::{errors::MatmulShapeError, iters::Slicer, shape::Shape, utils::Res},
+    core::{errors::MatmulShapeError, iters::Slicer, shape::Shape},
     Tensor,
 };
+use anyhow::Result;
 use std::{iter::Sum, ops::Mul};
 
 impl<T> Tensor<T>
 where
     T: Copy + Mul<Output = T> + Sum<T> + Default,
 {
-    pub fn matmul(&self, rhs: &Tensor<T>) -> Res<Tensor<T>> {
-        match (self.ndims(), rhs.ndims()) {
+    pub fn matmul(&self, rhs: &Tensor<T>) -> Result<Tensor<T>> {
+        match (self.rank(), rhs.rank()) {
             (0, _) | (_, 0) => Err(MatmulShapeError::Matmul0d.into()),
             (1, 1) => Tensor::scalar(self.mul(rhs)?.sum()?),
             (2, 2) => self.matmul_2d(rhs),
@@ -17,7 +18,7 @@ where
         }
     }
 
-    fn matmul_2d(&self, rhs: &Tensor<T>) -> Res<Tensor<T>> {
+    fn matmul_2d(&self, rhs: &Tensor<T>) -> Result<Tensor<T>> {
         let (n1, n2) = (self.sizes()[1], rhs.sizes()[0]);
 
         if n1 != n2 {
@@ -47,14 +48,11 @@ where
         Ok(Tensor::init(data, &[m, l]))
     }
 
-    fn matmul_nd(&self, rhs: &Tensor<T>) -> Res<Tensor<T>> {
-        let max_dimensions = self.ndims().max(rhs.ndims());
-        let (lhs, rhs) = (
-            self.unsqueeze(max_dimensions)?,
-            rhs.unsqueeze(max_dimensions)?,
-        );
+    fn matmul_nd(&self, rhs: &Tensor<T>) -> Result<Tensor<T>> {
+        let max_dims = self.rank().max(rhs.rank());
+        let (lhs, rhs) = (self.unsqueeze(max_dims)?, rhs.unsqueeze(max_dims)?);
 
-        let (first, second) = (max_dimensions - 1, max_dimensions - 2);
+        let (first, second) = (max_dims - 1, max_dims - 2);
         let (n1, n2) = (lhs.sizes()[first], rhs.sizes()[second]);
 
         if n1 != n2 {
@@ -63,7 +61,6 @@ where
 
         let rhs = rhs.transpose(second, first)?.to_contiguous()?;
         let (m, l) = (lhs.sizes()[second], rhs.sizes()[second]);
-        let ml = m * l;
 
         let broadcast = &Shape::broadcast(&lhs.sizes()[..second], &rhs.sizes()[..second])?;
         let (lhs, rhs) = (
@@ -82,15 +79,16 @@ where
         let sizes = [broadcast.as_slice(), &[m, l]].concat();
         let mut data = vec![T::default(); sizes.iter().product()];
 
-        for (li, lhs_slice) in lhs_iter.enumerate() {
+        for (lhs_i, lhs_slice) in lhs_iter.enumerate() {
             let row = &lhs.slicer(&lhs_slice)?;
 
-            for (ri, rhs_slice) in rhs_iter.iter().enumerate() {
+            for (rhs_i, rhs_slice) in rhs_iter.iter().enumerate() {
                 let column = rhs.slicer(rhs_slice)?;
                 let product_sum = (row * column)?.sum_dims(&[first, second], true)?;
 
-                for (i, &value) in product_sum.data_contiguous().iter().enumerate() {
-                    let offset = (i * ml) + (li * l) + ri;
+                // Pointer arithmetic
+                for (iter_i, &value) in product_sum.data_contiguous().iter().enumerate() {
+                    let offset = (iter_i * m * l) + (lhs_i * l) + rhs_i;
                     data[offset] = value
                 }
             }
