@@ -36,7 +36,7 @@
     - [ ] Rev
 
 - [>] Optimisations
-- [ ] Better error handling
+- [x] Better error handling
 
 - [ ] SIMD
 - [ ] GPU

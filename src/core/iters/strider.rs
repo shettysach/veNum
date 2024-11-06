@@ -31,11 +31,11 @@ impl<'a> Iterator for Indexer<'a> {
         for i in (0..self.sizes.len()).rev() {
             self.indices[i] += 1;
 
-            if self.indices[i] < self.sizes[i] {
+            if self.indices[i] >= self.sizes[i] {
+                self.indices[i] = 0;
+            } else {
                 break;
             }
-
-            self.indices[i] = 0;
         }
 
         self.current += 1;
@@ -78,11 +78,11 @@ impl<'a> Iterator for Strider<'a> {
         for i in (0..self.sizes.len()).rev() {
             self.indices[i] += self.strides[i];
 
-            if self.indices[i] / self.strides[i] < self.sizes[i] {
+            if self.indices[i] / self.strides[i] >= self.sizes[i] {
+                self.indices[i] = 0;
+            } else {
                 break;
             }
-
-            self.indices[i] = 0;
         }
 
         self.current += 1;

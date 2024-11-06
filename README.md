@@ -7,7 +7,7 @@
     - broadcasted algebraic operations
     - Nd matrix multiplication (naive)
     - 1d and 2d convolution / cross-correlation (naive) with strides
-    - reduction operations such as sum, product, max, min
+    - reduce operations such as sum, product, max, min and pooling
     - transformations such as view/reshape, permute/transpose, flip, expand, pad, slice, squeeze, unsqueeze
 
 - Clone the repo and run examples

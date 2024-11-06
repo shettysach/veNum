@@ -39,21 +39,21 @@ impl<'a> Iterator for Slicer<'a> {
             return None;
         }
 
-        self.current += 1;
         let next = self.indices.clone();
 
         for (d, slice_index) in self.indices.iter_mut().enumerate().rev() {
             if let Some(slice_index) = slice_index.as_mut() {
                 *slice_index += 1;
 
-                if *slice_index < self.sizes[d] {
+                if *slice_index >= self.sizes[d] {
+                    *slice_index = 0;
+                } else {
                     break;
                 }
-
-                *slice_index = 0;
             }
         }
 
+        self.current += 1;
         Some(next)
     }
 }

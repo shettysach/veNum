@@ -254,6 +254,10 @@ impl Shape {
     pub(crate) fn slice(&self, indices: &[(usize, usize)]) -> Result<Shape> {
         self.valid_contiguity()?;
 
+        if indices.is_empty() {
+            return Ok(self.clone());
+        }
+
         let mut indices = indices.to_vec();
         indices.resize(self.rank(), (0, 0));
         self.valid_ranges(&indices, &Vec::from_iter(0..indices.len()))?;
@@ -295,6 +299,10 @@ impl Shape {
         self.valid_contiguity()?;
         self.valid_dimensions(dimensions)?;
         self.valid_ranges(indices, dimensions)?;
+
+        if indices.is_empty() {
+            return Ok(self.clone());
+        }
 
         let mut offset = match self.strides.first().ok_or(EmptyTensorError::Slice)? {
             Stride::Positive(_) => self.offset,

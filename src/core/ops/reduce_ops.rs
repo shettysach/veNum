@@ -55,14 +55,17 @@ where
 
     pub fn max(&self) -> Result<T>
     where
-        T: Ord,
+        T: PartialOrd,
     {
         let max = if self.is_contiguous() {
-            self.data_contiguous().iter().copied().max()
+            self.data_contiguous()
+                .iter()
+                .copied()
+                .max_by(|a, b| a.partial_cmp(b).unwrap())
         } else {
             Indexer::new(&self.shape.sizes)
                 .map(|index| self.idx(&index))
-                .max()
+                .max_by(|a, b| a.partial_cmp(b).unwrap())
         };
 
         max.ok_or(EmptyTensorError::ReduceMax.into())
@@ -70,14 +73,17 @@ where
 
     pub fn min(&self) -> Result<T>
     where
-        T: Ord,
+        T: PartialOrd,
     {
         let min = if self.is_contiguous() {
-            self.data_contiguous().iter().copied().min()
+            self.data_contiguous()
+                .iter()
+                .copied()
+                .min_by(|a, b| a.partial_cmp(b).unwrap())
         } else {
             Indexer::new(&self.shape.sizes)
                 .map(|index| self.idx(&index))
-                .min()
+                .min_by(|a, b| a.partial_cmp(b).unwrap())
         };
 
         min.ok_or(EmptyTensorError::ReduceMin.into())
@@ -106,14 +112,14 @@ where
 
     pub fn max_dims(&self, dimensions: &[usize], keepdims: bool) -> Result<Tensor<T>>
     where
-        T: Ord,
+        T: PartialOrd,
     {
         self.reduce(dimensions, Tensor::max, keepdims)
     }
 
     pub fn min_dims(&self, dimensions: &[usize], keepdims: bool) -> Result<Tensor<T>>
     where
-        T: Ord,
+        T: PartialOrd,
     {
         self.reduce(dimensions, Tensor::min, keepdims)
     }

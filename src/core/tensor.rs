@@ -6,7 +6,7 @@ use crate::core::{
 };
 use anyhow::Result;
 use num_traits::{FromPrimitive, NumOps, One, Zero};
-use std::{fmt::Debug, iter::successors, ops::Add, sync::Arc};
+use std::{cmp::Ordering, fmt::Debug, iter::successors, ops::Add, sync::Arc};
 
 pub struct Tensor<T> {
     pub(crate) data: Arc<Vec<T>>,
@@ -70,18 +70,34 @@ impl<T: Copy> Tensor<T> {
         Tensor::same(T::one(), size)
     }
 
-    pub fn arange(start: T, end: T, step: T) -> Result<Tensor<T>, PhantomError>
+    pub fn arange(start: T, end: T, step: T) -> Result<Tensor<T>, ArangeError>
     where
-        T: Add<Output = T> + PartialOrd,
+        T: Add<Output = T> + PartialOrd + Zero,
     {
+        let step_order = step
+            .partial_cmp(&T::zero())
+            .ok_or(ArangeError::Comparison)?;
+
+        let comparison_fn: fn(T, T) -> bool = match step_order {
+            Ordering::Greater => match end > start {
+                true => |current, end| end > current,
+                false => return Err(ArangeError::Positive),
+            },
+            Ordering::Less => match start > end {
+                true => |current, end| current > end,
+                false => return Err(ArangeError::Negative),
+            },
+            Ordering::Equal => return Err(ArangeError::Zero),
+        };
+
         let data = successors(Some(start), |&prev| {
             let current = prev + step;
-            (current < end).then_some(current)
+            comparison_fn(current, end).then_some(current)
         })
         .collect::<Vec<T>>();
-        let data_len = data.len();
+        let num = data.len();
 
-        Ok(Tensor::init(data, &[data_len]))
+        Ok(Tensor::init(data, &[num]))
     }
 
     pub fn linspace(start: T, end: T, num: usize) -> Result<Tensor<T>, UsizeCastError>
@@ -501,7 +517,7 @@ impl<T: Copy> Tensor<T> {
 impl<T> Tensor<T> {
     // --- Same Data, Modified Shape ---
 
-    pub(crate) fn shaped(&self, shape: Shape) -> Tensor<T> {
+    pub(crate) fn with_shape(&self, shape: Shape) -> Tensor<T> {
         Tensor {
             data: Arc::clone(&self.data),
             shape,
@@ -509,7 +525,7 @@ impl<T> Tensor<T> {
     }
 
     pub fn view(&self, sizes: &[usize]) -> Result<Tensor<T>> {
-        Ok(self.shaped(self.shape.view(sizes)?))
+        Ok(self.with_shape(self.shape.view(sizes)?))
     }
 
     pub fn ravel(&self) -> Result<Tensor<T>> {
@@ -517,27 +533,27 @@ impl<T> Tensor<T> {
     }
 
     pub fn squeeze(&self) -> Result<Tensor<T>, PhantomError> {
-        Ok(self.shaped(self.shape.squeeze()?))
+        Ok(self.with_shape(self.shape.squeeze()?))
     }
 
     pub fn unsqueeze(&self, unsqueezed: usize) -> Result<Tensor<T>, UnsqueezeError> {
-        Ok(self.shaped(self.shape.unsqueeze(unsqueezed)?))
+        Ok(self.with_shape(self.shape.unsqueeze(unsqueezed)?))
     }
 
     pub fn permute(&self, permutation: &[usize]) -> Result<Tensor<T>> {
-        Ok(self.shaped(self.shape.permute(permutation)?))
+        Ok(self.with_shape(self.shape.permute(permutation)?))
     }
 
     pub fn transpose(&self, dim_1: usize, dim_2: usize) -> Result<Tensor<T>> {
-        Ok(self.shaped(self.shape.transpose(dim_1, dim_2)?))
+        Ok(self.with_shape(self.shape.transpose(dim_1, dim_2)?))
     }
 
     pub fn expand(&self, expansions: &[usize]) -> Result<Tensor<T>> {
-        Ok(self.shaped(self.shape.expand(expansions)?))
+        Ok(self.with_shape(self.shape.expand(expansions)?))
     }
 
     pub fn flip(&self, flips: &[usize]) -> Result<Tensor<T>, DimensionError> {
-        Ok(self.shaped(self.shape.flip(flips)?))
+        Ok(self.with_shape(self.shape.flip(flips)?))
     }
 
     pub fn flip_all(&self) -> Result<Tensor<T>, DimensionError> {
@@ -545,15 +561,15 @@ impl<T> Tensor<T> {
     }
 
     pub fn slice(&self, ranges: &[(usize, usize)]) -> Result<Tensor<T>> {
-        Ok(self.shaped(self.shape.slice(ranges)?))
+        Ok(self.with_shape(self.shape.slice(ranges)?))
     }
 
     pub fn slice_dims(&self, dimensions: &[usize], ranges: &[(usize, usize)]) -> Result<Tensor<T>> {
-        Ok(self.shaped(self.shape.slice_dims(dimensions, ranges)?))
+        Ok(self.with_shape(self.shape.slice_dims(dimensions, ranges)?))
     }
 
     pub(crate) fn slicer(&self, indices: &[Option<usize>]) -> Result<Tensor<T>> {
-        Ok(self.shaped(self.shape.slicer(indices)?))
+        Ok(self.with_shape(self.shape.slicer(indices)?))
     }
 
     // --- Attributes ---

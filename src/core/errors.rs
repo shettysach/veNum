@@ -1,18 +1,5 @@
 use thiserror::Error;
 
-// --- Misc ---
-
-#[derive(Error, Debug)]
-#[error("Cannot convert {value} from `usize` to type {dtype}")]
-pub struct UsizeCastError {
-    pub value: usize,
-    pub dtype: &'static str,
-}
-
-#[derive(Error, Debug)]
-#[error("Error type for consistency")]
-pub struct PhantomError;
-
 // --- Shape ---
 
 #[derive(Error, Debug)]
@@ -136,4 +123,32 @@ pub enum MatmulShapeError {
 pub struct ValidConvShapeError {
     pub input_sizes: Vec<usize>,
     pub kernel_sizes: Vec<usize>,
+}
+
+// --- Misc ---
+
+#[derive(Error, Debug)]
+#[error("Error type for consistency.")]
+pub struct PhantomError;
+
+#[derive(Error, Debug)]
+#[error("Cannot convert {value} from `usize` to type {dtype}.")]
+pub struct UsizeCastError {
+    pub value: usize,
+    pub dtype: &'static str,
+}
+
+#[derive(Error, Debug)]
+pub enum ArangeError {
+    #[error("Step size cannot be zero.")]
+    Zero,
+
+    #[error("Step size is positive, but start > end.")]
+    Positive,
+
+    #[error("Step size is negative, but end > start.")]
+    Negative,
+
+    #[error("Step size cannot compared with zero.")]
+    Comparison,
 }
