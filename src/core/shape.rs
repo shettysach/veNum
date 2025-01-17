@@ -107,7 +107,7 @@ impl Shape {
         self.permute(&permutation)
     }
 
-    pub(crate) fn flip(&self, flips: &[usize]) -> Result<Shape, DimensionError> {
+    pub(crate) fn flip(&self, flips: &[usize]) -> Result<Shape> {
         self.valid_dimensions(flips)?;
 
         let strides = self
@@ -163,7 +163,7 @@ impl Shape {
         })
     }
 
-    pub(crate) fn squeeze(&self) -> Result<Shape, PhantomError> {
+    pub(crate) fn squeeze(&self) -> Result<Shape> {
         if self.numel() == 1 {
             return Ok(Shape {
                 sizes: vec![1],
@@ -186,7 +186,7 @@ impl Shape {
         })
     }
 
-    pub(crate) fn unsqueeze(&self, unsqueezed: usize) -> Result<Shape, UnsqueezeError> {
+    pub(crate) fn unsqueeze(&self, unsqueezed: usize) -> Result<Shape> {
         let current = self.rank();
 
         match unsqueezed.cmp(&current) {
@@ -194,7 +194,8 @@ impl Shape {
             Ordering::Less => Err(UnsqueezeError {
                 current,
                 unsqueezed,
-            }),
+            }
+            .into()),
             Ordering::Greater => {
                 let ones_len = unsqueezed - current;
                 let mut sizes = self.sizes.to_vec();
@@ -300,10 +301,6 @@ impl Shape {
         self.valid_dimensions(dimensions)?;
         self.valid_ranges(indices, dimensions)?;
 
-        if indices.is_empty() {
-            return Ok(self.clone());
-        }
-
         let mut offset = match self.strides.first().ok_or(EmptyTensorError::Slice)? {
             Stride::Positive(_) => self.offset,
             Stride::Negative(_) => self.numel() - 1 - self.offset,
@@ -341,7 +338,7 @@ impl Shape {
         })
     }
 
-    pub(crate) fn pad(&self, padding: &[(usize, usize)]) -> Result<Shape, PhantomError> {
+    pub(crate) fn pad(&self, padding: &[(usize, usize)]) -> Result<Shape> {
         let mut padding = padding.to_vec();
         padding.resize(self.rank(), (0, 0));
 
@@ -359,7 +356,7 @@ impl Shape {
         &self,
         padding: &[(usize, usize)],
         dimensions: &[usize],
-    ) -> Result<Shape, DimensionError> {
+    ) -> Result<Shape> {
         self.valid_dimensions(dimensions)?;
 
         let sizes = (0..self.rank())

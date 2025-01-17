@@ -23,7 +23,7 @@ impl<T: Copy> Tensor<T> {
         }
     }
 
-    pub fn new(data: &[T], sizes: &[usize]) -> Result<Tensor<T>, InvalidDataLengthError> {
+    pub fn new(data: &[T], sizes: &[usize]) -> Result<Tensor<T>> {
         let data_length = data.len();
         let tensor_size = sizes.iter().product();
 
@@ -31,13 +31,14 @@ impl<T: Copy> Tensor<T> {
             return Err(InvalidDataLengthError {
                 data_length,
                 tensor_size,
-            });
+            }
+            .into());
         }
 
         Ok(Tensor::init(data.to_vec(), sizes))
     }
 
-    pub fn new_1d(data: &[T]) -> Result<Tensor<T>, PhantomError> {
+    pub fn new_1d(data: &[T]) -> Result<Tensor<T>> {
         Ok(Tensor::init(data.to_vec(), &[data.len()]))
     }
 
@@ -52,25 +53,25 @@ impl<T: Copy> Tensor<T> {
         })
     }
 
-    pub fn same(element: T, size: usize) -> Result<Tensor<T>, PhantomError> {
+    pub fn same(element: T, size: usize) -> Result<Tensor<T>> {
         Ok(Tensor::init(vec![element; size], &[size]))
     }
 
-    pub fn zeroes(size: usize) -> Result<Tensor<T>, PhantomError>
+    pub fn zeroes(size: usize) -> Result<Tensor<T>>
     where
         T: Zero,
     {
         Tensor::same(T::zero(), size)
     }
 
-    pub fn ones(size: usize) -> Result<Tensor<T>, PhantomError>
+    pub fn ones(size: usize) -> Result<Tensor<T>>
     where
         T: One,
     {
         Tensor::same(T::one(), size)
     }
 
-    pub fn arange(start: T, end: T, step: T) -> Result<Tensor<T>, ArangeError>
+    pub fn arange(start: T, end: T, step: T) -> Result<Tensor<T>>
     where
         T: Add<Output = T> + PartialOrd + Zero,
     {
@@ -81,13 +82,13 @@ impl<T: Copy> Tensor<T> {
         let comparison_fn: fn(T, T) -> bool = match step_order {
             Ordering::Greater => match end > start {
                 true => |current, end| end > current,
-                false => return Err(ArangeError::Positive),
+                false => return Err(ArangeError::Positive.into()),
             },
             Ordering::Less => match start > end {
                 true => |current, end| current > end,
-                false => return Err(ArangeError::Negative),
+                false => return Err(ArangeError::Negative.into()),
             },
-            Ordering::Equal => return Err(ArangeError::Zero),
+            Ordering::Equal => return Err(ArangeError::Zero.into()),
         };
 
         let data = successors(Some(start), |&prev| {
@@ -100,7 +101,7 @@ impl<T: Copy> Tensor<T> {
         Ok(Tensor::init(data, &[num]))
     }
 
-    pub fn linspace(start: T, end: T, num: usize) -> Result<Tensor<T>, UsizeCastError>
+    pub fn linspace(start: T, end: T, num: usize) -> Result<Tensor<T>>
     where
         T: NumOps + FromPrimitive + Debug,
     {
@@ -114,7 +115,7 @@ impl<T: Copy> Tensor<T> {
         Ok(Tensor::init(data, &[num]))
     }
 
-    pub fn eye(size: usize) -> Result<Tensor<T>, PhantomError>
+    pub fn eye(size: usize) -> Result<Tensor<T>>
     where
         T: Zero + One,
     {
@@ -132,14 +133,14 @@ impl<T: Copy> Tensor<T> {
         Ok(Tensor::init(data, &[size, size]))
     }
 
-    pub fn to_contiguous(&self) -> Result<Tensor<T>, PhantomError> {
+    pub fn to_contiguous(&self) -> Result<Tensor<T>> {
         Ok(Tensor {
             data: Arc::new(self.data_non_contiguous()),
             shape: Shape::new(&self.shape.sizes),
         })
     }
 
-    pub(crate) fn into_contiguous(self) -> Result<Tensor<T>, PhantomError> {
+    pub(crate) fn into_contiguous(self) -> Result<Tensor<T>> {
         if self.is_contiguous() {
             Ok(self)
         } else {
@@ -233,25 +234,27 @@ impl<T: Copy> Tensor<T> {
     // --- Maps, Zips and Reduce ---
 
     pub fn unary_map<R>(&self, f: impl Fn(T) -> R) -> Result<Tensor<R>> {
-        let (data, shape) = if self.is_contiguous() {
-            (
-                self.data_contiguous().iter().map(|&elem| f(elem)).collect(),
-                Shape {
-                    sizes: self.sizes().to_vec(),
-                    strides: self.strides().to_vec(),
-                    offset: 0,
-                },
-            )
+        let contiguous = self.is_contiguous();
+
+        let data = if contiguous {
+            self.data_contiguous().iter().map(|&elem| f(elem)).collect()
         } else {
-            (
-                Indexer::new(&self.shape.sizes)
-                    .map(|index| {
-                        let elem = self.idx(&index);
-                        f(elem)
-                    })
-                    .collect(),
-                Shape::new(self.sizes()),
-            )
+            Indexer::new(&self.shape.sizes)
+                .map(|index| {
+                    let elem = self.idx(&index);
+                    f(elem)
+                })
+                .collect()
+        };
+
+        let shape = if contiguous {
+            Shape {
+                sizes: self.sizes().to_vec(),
+                strides: self.strides().to_vec(),
+                offset: 0,
+            }
+        } else {
+            Shape::new(self.sizes())
         };
 
         Ok(Tensor {
@@ -261,28 +264,30 @@ impl<T: Copy> Tensor<T> {
     }
 
     pub fn binary_map<R>(&self, rhs: T, f: impl Fn(T, T) -> R) -> Result<Tensor<R>> {
-        let (data, shape) = if self.is_contiguous() {
-            (
-                self.data_contiguous()
-                    .iter()
-                    .map(|&elem| f(elem, rhs))
-                    .collect(),
-                Shape {
-                    sizes: self.sizes().to_vec(),
-                    strides: self.strides().to_vec(),
-                    offset: 0,
-                },
-            )
+        let contiguous = self.is_contiguous();
+
+        let data = if contiguous {
+            self.data_contiguous()
+                .iter()
+                .map(|&elem| f(elem, rhs))
+                .collect()
         } else {
-            (
-                Indexer::new(&self.shape.sizes)
-                    .map(|index| {
-                        let lhs_elem = self.idx(&index);
-                        f(lhs_elem, rhs)
-                    })
-                    .collect(),
-                Shape::new(self.sizes()),
-            )
+            Indexer::new(&self.shape.sizes)
+                .map(|index| {
+                    let lhs_elem = self.idx(&index);
+                    f(lhs_elem, rhs)
+                })
+                .collect()
+        };
+
+        let shape = if contiguous {
+            Shape {
+                sizes: self.sizes().to_vec(),
+                strides: self.strides().to_vec(),
+                offset: 0,
+            }
+        } else {
+            Shape::new(self.sizes())
         };
 
         Ok(Tensor {
@@ -300,31 +305,33 @@ impl<T: Copy> Tensor<T> {
     }
 
     fn equal_zip<R>(&self, rhs: &Tensor<T>, f: impl Fn(T, T) -> R) -> Result<Tensor<R>> {
-        let (data, shape) = if self.is_contiguous() && rhs.is_contiguous() {
-            (
-                self.data_contiguous()
-                    .iter()
-                    .zip(rhs.data_contiguous())
-                    .map(|(&lhs_elem, &rhs_elem)| f(lhs_elem, rhs_elem))
-                    .collect(),
-                Shape {
-                    sizes: self.sizes().to_vec(),
-                    strides: self.strides().to_vec(),
-                    offset: 0,
-                },
-            )
-        } else {
-            (
-                Indexer::new(&self.shape.sizes)
-                    .map(|index| {
-                        let lhs_elem = self.idx(&index);
-                        let rhs_elem = rhs.idx(&index);
+        let contiguous = self.is_contiguous() && rhs.is_contiguous();
 
-                        f(lhs_elem, rhs_elem)
-                    })
-                    .collect(),
-                Shape::new(self.sizes()),
-            )
+        let data = if contiguous {
+            self.data_contiguous()
+                .iter()
+                .zip(rhs.data_contiguous())
+                .map(|(&lhs_elem, &rhs_elem)| f(lhs_elem, rhs_elem))
+                .collect()
+        } else {
+            Indexer::new(&self.shape.sizes)
+                .map(|index| {
+                    let lhs_elem = self.idx(&index);
+                    let rhs_elem = rhs.idx(&index);
+
+                    f(lhs_elem, rhs_elem)
+                })
+                .collect()
+        };
+
+        let shape = if contiguous {
+            Shape {
+                sizes: self.sizes().to_vec(),
+                strides: self.strides().to_vec(),
+                offset: 0,
+            }
+        } else {
+            Shape::new(self.sizes())
         };
 
         Ok(Tensor {
@@ -532,11 +539,11 @@ impl<T> Tensor<T> {
         self.view(&[self.numel()])
     }
 
-    pub fn squeeze(&self) -> Result<Tensor<T>, PhantomError> {
+    pub fn squeeze(&self) -> Result<Tensor<T>> {
         Ok(self.with_shape(self.shape.squeeze()?))
     }
 
-    pub fn unsqueeze(&self, unsqueezed: usize) -> Result<Tensor<T>, UnsqueezeError> {
+    pub fn unsqueeze(&self, unsqueezed: usize) -> Result<Tensor<T>> {
         Ok(self.with_shape(self.shape.unsqueeze(unsqueezed)?))
     }
 
@@ -552,11 +559,11 @@ impl<T> Tensor<T> {
         Ok(self.with_shape(self.shape.expand(expansions)?))
     }
 
-    pub fn flip(&self, flips: &[usize]) -> Result<Tensor<T>, DimensionError> {
+    pub fn flip(&self, flips: &[usize]) -> Result<Tensor<T>> {
         Ok(self.with_shape(self.shape.flip(flips)?))
     }
 
-    pub fn flip_all(&self) -> Result<Tensor<T>, DimensionError> {
+    pub fn flip_all(&self) -> Result<Tensor<T>> {
         self.flip(&Vec::from_iter(0..self.rank()))
     }
 

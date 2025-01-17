@@ -32,7 +32,7 @@ impl<'a> Slicer<'a> {
     }
 }
 
-impl<'a> Iterator for Slicer<'a> {
+impl Iterator for Slicer<'_> {
     type Item = Vec<Option<usize>>;
     fn next(&mut self) -> Option<Self::Item> {
         if self.current == self.maximum {

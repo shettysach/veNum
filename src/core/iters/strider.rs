@@ -18,7 +18,7 @@ impl<'a> Indexer<'a> {
     }
 }
 
-impl<'a> Iterator for Indexer<'a> {
+impl Iterator for Indexer<'_> {
     type Item = Vec<usize>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -65,7 +65,7 @@ impl<'a> Strider<'a> {
     }
 }
 
-impl<'a> Iterator for Strider<'a> {
+impl Iterator for Strider<'_> {
     type Item = Vec<usize>;
 
     fn next(&mut self) -> Option<Self::Item> {

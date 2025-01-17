@@ -25,6 +25,8 @@
     - [x] Replace padding with slicing 
     - [x] Handle cases where kernel > input
     - [?] FFT
+    - [ ] Perform using strides?
+
   - [>] Padding tensor
     - [?] Better method? 
 

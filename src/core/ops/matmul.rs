@@ -39,9 +39,9 @@ where
 
             for rhs_slice in rhs_iter.iter() {
                 let column = rhs.slicer(rhs_slice)?;
-                let product_sum = (row * column)?.sum()?;
+                let prodsum = (row * column)?.sum()?;
 
-                data.push(product_sum);
+                data.push(prodsum);
             }
         }
 
@@ -84,10 +84,9 @@ where
 
             for (rhs_i, rhs_slice) in rhs_iter.iter().enumerate() {
                 let column = rhs.slicer(rhs_slice)?;
-                let product_sum = (row * column)?.sum_dims(&[first, second], true)?;
+                let prodsum = (row * column)?.sum_dims(&[first, second], true)?;
 
-                // Pointer arithmetic
-                for (iter_i, &value) in product_sum.data_contiguous().iter().enumerate() {
+                for (iter_i, &value) in prodsum.data_contiguous().iter().enumerate() {
                     let offset = (iter_i * m * l) + (lhs_i * l) + rhs_i;
                     data[offset] = value
                 }

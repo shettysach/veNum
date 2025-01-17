@@ -97,8 +97,8 @@ impl Tensor<f32> {
     }
 
     pub fn softmax(&self) -> Result<Tensor<f32>> {
-        let exp = &self.exp()?;
-        exp / exp.sum()?
+        let exp = self.exp()?;
+        &exp / exp.sum()?
     }
 }
 

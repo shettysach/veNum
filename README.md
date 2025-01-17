@@ -19,6 +19,8 @@ cargo run -r --example <example_name>
 cargo add --git https://github.com/shettysach/veNum
 ```
 
+> NOTE: WIP. Needs massive refactoring and optimization.
+
 ##### credits
 
 - [kurtschelfthout/tensorken](https://github.com/kurtschelfthout/tensorken)

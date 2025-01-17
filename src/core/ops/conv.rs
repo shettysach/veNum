@@ -1,8 +1,8 @@
 use crate::{
-    core::{errors::ValidConvShapeError, iters::Strider, shape::Shape},
+    core::{iters::Strider, shape::Shape},
     Tensor,
 };
-use anyhow::Result;
+use anyhow::{Ok, Result};
 use std::{iter::Sum, ops::Mul};
 
 pub enum Mode {
@@ -41,8 +41,14 @@ where
             let (input_ranges, kernel_ranges) =
                 range_fn(input_conv_sizes, kernel_conv_sizes, &[iter_index]);
 
-            let input_slice = self.slice_dims(&[i_zero], &input_ranges)?;
-            let kernel_slice = kernel.slice_dims(&[k_zero], &kernel_ranges)?;
+            let input_slice = match input_ranges {
+                Some(input_ranges) => &self.slice_dims(&[i_zero], &input_ranges)?,
+                None => self,
+            };
+            let kernel_slice = match kernel_ranges {
+                Some(kernel_ranges) => &kernel.slice_dims(&[k_zero], &kernel_ranges)?,
+                None => kernel,
+            };
             let product_sum = (input_slice * kernel_slice)?;
 
             for (index, &value) in product_sum.data_contiguous().iter().enumerate() {
@@ -84,11 +90,16 @@ where
         for iter_index in Strider::new(&output_sizes, strides) {
             let (input_ranges, kernel_ranges) = range_fn(input_sizes, kernel_sizes, &iter_index);
 
-            let input_slice = &self.slice_dims(input_dims, &input_ranges)?;
-            let kernel_slice = &kernel.slice_dims(kernel_dims, &kernel_ranges)?;
+            let input_slice = match input_ranges {
+                Some(input_ranges) => &self.slice_dims(input_dims, &input_ranges)?,
+                None => self,
+            };
+            let kernel_slice = match kernel_ranges {
+                Some(kernel_ranges) => &kernel.slice_dims(kernel_dims, &kernel_ranges)?,
+                None => kernel,
+            };
             let product_sum = (input_slice * kernel_slice)?.sum_dims(input_dims, true)?;
 
-            // Pointer arithmetic
             for (index, &value) in product_sum.data_contiguous().iter().enumerate() {
                 let offset = (index * output_product)
                     + (iter_index[0] / strides[0] * output_sizes[1])
@@ -120,7 +131,7 @@ where
     }
 }
 
-pub type Ranges = (Vec<(usize, usize)>, Vec<(usize, usize)>);
+pub type Ranges = (Option<Vec<(usize, usize)>>, Option<Vec<(usize, usize)>>);
 pub type RangeFn = fn(&[usize], &[usize], &[usize]) -> Ranges;
 
 impl Mode {
@@ -148,7 +159,7 @@ impl Mode {
         &self,
         input_sizes: &[usize],
         kernel_sizes: &[usize],
-    ) -> Result<RangeFn, ValidConvShapeError> {
+    ) -> Result<RangeFn> {
         Ok(match self {
             Mode::Valid => match Shape::conv_larger_input(input_sizes, kernel_sizes)? {
                 true => Mode::valid_ranges_i,
@@ -160,81 +171,93 @@ impl Mode {
     }
 
     fn valid_ranges_i(_input_sizes: &[usize], kernel_sizes: &[usize], indices: &[usize]) -> Ranges {
-        let input_ranges = indices
-            .iter()
-            .zip(kernel_sizes)
-            .map(|(&index, &kernel_size)| (index, index + kernel_size))
-            .collect();
+        let input_ranges = Some(
+            indices
+                .iter()
+                .zip(kernel_sizes)
+                .map(|(&index, &kernel_size)| (index, index + kernel_size))
+                .collect(),
+        );
 
-        (input_ranges, Vec::new())
+        (input_ranges, None)
     }
 
     fn valid_ranges_k(input_sizes: &[usize], kernel_sizes: &[usize], indices: &[usize]) -> Ranges {
-        let kernel_ranges = indices
-            .iter()
-            .zip(input_sizes)
-            .zip(kernel_sizes)
-            .map(|((index, input_size), kernel_size)| {
-                let start = kernel_size - input_size - index;
-                let end = start + input_size;
-                (start, end)
-            })
-            .collect();
+        let kernel_ranges = Some(
+            indices
+                .iter()
+                .zip(input_sizes)
+                .zip(kernel_sizes)
+                .map(|((index, input_size), kernel_size)| {
+                    let start = kernel_size - input_size - index;
+                    let end = start + input_size;
+                    (start, end)
+                })
+                .collect(),
+        );
 
-        (Vec::new(), kernel_ranges)
+        (None, kernel_ranges)
     }
 
     fn full_ranges(input_sizes: &[usize], kernel_sizes: &[usize], indices: &[usize]) -> Ranges {
-        let input_ranges = indices
-            .iter()
-            .zip(input_sizes)
-            .zip(kernel_sizes)
-            .map(|((&index, &input_size), &kernel_size)| {
-                let start = index.saturating_sub(kernel_size - 1);
-                let end = (index + 1).min(input_size);
+        let input_ranges = Some(
+            indices
+                .iter()
+                .zip(input_sizes)
+                .zip(kernel_sizes)
+                .map(|((&index, &input_size), &kernel_size)| {
+                    let start = index.saturating_sub(kernel_size - 1);
+                    let end = (index + 1).min(input_size);
 
-                (start, end)
-            })
-            .collect();
+                    (start, end)
+                })
+                .collect(),
+        );
 
-        let kernel_ranges = indices
-            .iter()
-            .zip(input_sizes)
-            .zip(kernel_sizes)
-            .map(|((&index, &input_size), &kernel_size)| {
-                let start = (kernel_size - 1).saturating_sub(index);
-                let range = input_size - index.saturating_sub(kernel_size - 1);
-                let end = kernel_size.min(start + range);
-                (start, end)
-            })
-            .collect();
+        let kernel_ranges = Some(
+            indices
+                .iter()
+                .zip(input_sizes)
+                .zip(kernel_sizes)
+                .map(|((&index, &input_size), &kernel_size)| {
+                    let start = (kernel_size - 1).saturating_sub(index);
+                    let range = input_size - index.saturating_sub(kernel_size - 1);
+                    let end = kernel_size.min(start + range);
+                    (start, end)
+                })
+                .collect(),
+        );
 
         (input_ranges, kernel_ranges)
     }
 
     fn same_ranges(input_sizes: &[usize], kernel_sizes: &[usize], indices: &[usize]) -> Ranges {
-        let input_ranges = indices
-            .iter()
-            .zip(input_sizes)
-            .zip(kernel_sizes)
-            .map(|((&index, &input_size), &kernel_size)| {
-                let start = index.saturating_sub(1);
-                let end = (index + kernel_size - 1).min(input_size);
-                (start, end)
-            })
-            .collect();
+        let input_ranges = Some(
+            indices
+                .iter()
+                .zip(input_sizes)
+                .zip(kernel_sizes)
+                .map(|((&index, &input_size), &kernel_size)| {
+                    let start = index.saturating_sub(1);
+                    let end = (index + kernel_size - 1).min(input_size);
+                    (start, end)
+                })
+                .collect(),
+        );
 
-        let kernel_ranges = indices
-            .iter()
-            .zip(input_sizes)
-            .zip(kernel_sizes)
-            .map(|((&index, &input_size), &kernel_size)| {
-                let start = 1_usize.saturating_sub(index);
-                let range = input_size - index.saturating_sub(1);
-                let end = kernel_size.min(start + range);
-                (start, end)
-            })
-            .collect();
+        let kernel_ranges = Some(
+            indices
+                .iter()
+                .zip(input_sizes)
+                .zip(kernel_sizes)
+                .map(|((&index, &input_size), &kernel_size)| {
+                    let start = 1_usize.saturating_sub(index);
+                    let range = input_size - index.saturating_sub(1);
+                    let end = kernel_size.min(start + range);
+                    (start, end)
+                })
+                .collect(),
+        );
 
         (input_ranges, kernel_ranges)
     }

@@ -7,7 +7,7 @@ fn main() -> Result<()> {
         .transpose(1, 3)?
         .flip(&[2])?;
     let eye = Tensor::eye(4)?;
-    let res = &tensor.matmul(&eye)?;
+    let res = tensor.matmul(&eye)?;
 
     println!("{}", tensor);
     println!("{}", eye);

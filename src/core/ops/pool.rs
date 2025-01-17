@@ -32,10 +32,11 @@ where
         for iter_index in Strider::new(&output_sizes, strides) {
             let (input_ranges, _) = range_fn(input_sizes, pool_sizes, &iter_index);
 
-            let input_slice = self
-                .slice_dims(&[i_first], &input_ranges)?
-                .to_contiguous()?;
-            let aggregate = f(&input_slice, &[i_first], keepdims)?;
+            let input_slice = match input_ranges {
+                Some(input_ranges) => &self.slice_dims(&[i_first], &input_ranges)?,
+                None => self,
+            };
+            let aggregate = f(input_slice, &[i_first], keepdims)?;
 
             for (index, &value) in aggregate.data_contiguous().iter().enumerate() {
                 let offset = (index * output_width) + index;
@@ -71,13 +72,13 @@ where
         for iter_index in Strider::new(&output_sizes, strides) {
             let (input_ranges, _) = range_fn(input_sizes, pool_sizes, &iter_index);
 
-            let input_slice = self
-                .slice_dims(input_dims, &input_ranges)?
-                .to_contiguous()?;
-            let aggregate = f(&input_slice, input_dims, keepdims)?;
+            let input_slice = match input_ranges {
+                Some(input_ranges) => &self.slice_dims(input_dims, &input_ranges)?,
+                None => self,
+            };
+            let reduction = f(input_slice, input_dims, keepdims)?;
 
-            // Pointer arithmetic
-            for (index, &value) in aggregate.data_contiguous().iter().enumerate() {
+            for (index, &value) in reduction.data_contiguous().iter().enumerate() {
                 let offset = (index * output_product)
                     + (iter_index[0] / strides[0] * output_sizes[1])
                     + iter_index[1] / strides[1];
