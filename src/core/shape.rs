@@ -4,7 +4,7 @@ use std::{
     cmp::{max, Ordering},
     collections::HashSet,
     iter::repeat,
-    ops::Mul,
+    ops::{Deref, Mul},
 };
 
 #[derive(Clone)]
@@ -14,11 +14,8 @@ pub(crate) struct Shape {
     pub offset: usize,
 }
 
-#[derive(Copy, Clone)]
-pub enum Stride {
-    Positive(usize),
-    Negative(usize),
-}
+#[derive(Clone, Copy)]
+pub struct Stride(isize);
 
 impl Shape {
     pub fn new(sizes: &[usize]) -> Shape {
@@ -27,16 +24,24 @@ impl Shape {
             .iter()
             .rev()
             .map(|size| {
-                let stride_val = current;
+                let value = current;
                 current *= size;
-                Stride::new(stride_val, true)
+                Stride::new(value, true)
             })
-            .collect::<Vec<Stride>>();
+            .collect();
         strides.reverse();
 
         Shape {
             sizes: sizes.to_vec(),
             strides,
+            offset: 0,
+        }
+    }
+
+    pub(crate) fn scalar() -> Shape {
+        Shape {
+            sizes: vec![1],
+            strides: vec![Stride(1)],
             offset: 0,
         }
     }
@@ -56,18 +61,19 @@ impl Shape {
         self.valid_reshape(sizes)?;
 
         let mut current = 1;
-        let positive = match self.strides.first().ok_or(EmptyTensorError::View)? {
-            Stride::Positive(_) => true,
-            Stride::Negative(_) => false,
-        };
+        let positive = self
+            .strides
+            .first()
+            .ok_or(EmptyTensorError::View)?
+            .is_positive();
 
         let mut strides = sizes
             .iter()
             .rev()
             .map(|size| {
-                let stride_val = current;
+                let value = current;
                 current *= size;
-                Stride::new(stride_val, positive)
+                Stride::new(value, positive)
             })
             .collect::<Vec<Stride>>();
         strides.reverse();
@@ -116,10 +122,7 @@ impl Shape {
             .enumerate()
             .map(|(i, &stride)| {
                 if flips.contains(&i) {
-                    match stride {
-                        Stride::Positive(stride_val) => Stride::Negative(stride_val),
-                        Stride::Negative(stride_val) => Stride::Positive(stride_val),
-                    }
+                    Stride(-stride.0)
                 } else {
                     stride
                 }
@@ -167,7 +170,7 @@ impl Shape {
         if self.numel() == 1 {
             return Ok(Shape {
                 sizes: vec![1],
-                strides: vec![Stride::Positive(1)],
+                strides: vec![Stride(1)],
                 offset: self.offset,
             });
         }
@@ -255,31 +258,35 @@ impl Shape {
     pub(crate) fn slice(&self, indices: &[(usize, usize)]) -> Result<Shape> {
         self.valid_contiguity()?;
 
-        if indices.is_empty() {
-            return Ok(self.clone());
-        }
-
         let mut indices = indices.to_vec();
         indices.resize(self.rank(), (0, 0));
         self.valid_ranges(&indices, &Vec::from_iter(0..indices.len()))?;
 
-        let mut offset = match self.strides.first().ok_or(EmptyTensorError::Slice)? {
-            Stride::Positive(_) => self.offset,
-            Stride::Negative(_) => self.numel() - 1 - self.offset,
+        let positive = self
+            .strides
+            .first()
+            .ok_or(EmptyTensorError::Slice)?
+            .is_positive();
+
+        let mut offset = if positive {
+            self.offset
+        } else {
+            self.numel() - 1 - self.offset
         };
 
-        let sizes = self
+        let sizes: Vec<usize> = self
             .sizes
             .iter()
-            .zip(self.strides.iter())
+            .zip(&self.strides)
             .zip(indices)
-            .map(|((&size, stride), (start, end))| {
+            .map(|((&size, &Stride(stride)), (start, end))| {
                 let end = if end == 0 { size } else { end };
 
-                match stride {
-                    Stride::Positive(stride_val) => offset += start * stride_val,
-                    Stride::Negative(stride_val) => offset -= (end - 1) * stride_val,
-                };
+                if positive {
+                    offset += start * stride as usize;
+                } else {
+                    offset -= (end - 1) * -stride as usize;
+                }
 
                 end - start
             })
@@ -301,9 +308,16 @@ impl Shape {
         self.valid_dimensions(dimensions)?;
         self.valid_ranges(indices, dimensions)?;
 
-        let mut offset = match self.strides.first().ok_or(EmptyTensorError::Slice)? {
-            Stride::Positive(_) => self.offset,
-            Stride::Negative(_) => self.numel() - 1 - self.offset,
+        let positive = self
+            .strides
+            .first()
+            .ok_or(EmptyTensorError::Slice)?
+            .is_positive();
+
+        let mut offset = if positive {
+            self.offset
+        } else {
+            self.numel() - 1 - self.offset
         };
 
         let sizes = (0..self.rank())
@@ -311,19 +325,21 @@ impl Shape {
                 if let Some(position) = dimensions.iter().position(|&d| d == dimension) {
                     let (start, end) = indices[position];
                     let end = if end == 0 { self.sizes[dimension] } else { end };
+                    let stride = self.strides[dimension].0;
 
-                    match self.strides[dimension] {
-                        Stride::Positive(stride_val) => offset += start * stride_val,
-                        Stride::Negative(stride_val) => offset -= (end - 1) * stride_val,
+                    if positive {
+                        offset += start * stride as usize
+                    } else {
+                        offset -= (end - 1) * -stride as usize
                     };
 
                     end - start
                 } else {
                     let size = self.sizes[dimension];
+                    let stride = self.strides[dimension].0;
 
-                    match self.strides[dimension] {
-                        Stride::Positive(_) => {}
-                        Stride::Negative(stride_val) => offset -= size * stride_val,
+                    if !positive {
+                        offset -= size * -stride as usize;
                     };
 
                     size
@@ -376,9 +392,16 @@ impl Shape {
     pub(crate) fn slicer(&self, indices: &[Option<usize>]) -> Result<Shape> {
         self.valid_contiguity()?;
 
-        let mut offset = match self.strides.first().ok_or(EmptyTensorError::Slice)? {
-            Stride::Positive(_) => self.offset,
-            Stride::Negative(_) => self.numel() - 1 - self.offset,
+        let positive = self
+            .strides
+            .first()
+            .ok_or(EmptyTensorError::Slice)?
+            .is_positive();
+
+        let mut offset = if positive {
+            self.offset
+        } else {
+            self.numel() - 1 - self.offset
         };
 
         let sizes = self
@@ -386,11 +409,12 @@ impl Shape {
             .iter()
             .zip(&self.strides)
             .zip(indices)
-            .map(|((&size, &stride), i)| {
+            .map(|((&size, &Stride(stride)), i)| {
                 if let Some(i) = i {
-                    match stride {
-                        Stride::Positive(stride_val) => offset += i * stride_val,
-                        Stride::Negative(stride_val) => offset -= i * stride_val,
+                    if positive {
+                        offset += i * stride as usize
+                    } else {
+                        offset -= i * -stride as usize
                     }
 
                     1
@@ -586,42 +610,40 @@ impl PartialEq for Shape {
     }
 }
 
+// ---
+
 impl Stride {
-    pub(crate) fn new(stride_val: usize, positive: bool) -> Stride {
-        if positive {
-            Stride::Positive(stride_val)
-        } else {
-            Stride::Negative(stride_val)
-        }
+    pub(crate) fn new(value: usize, positive: bool) -> Stride {
+        let value = value as isize;
+        let value = if positive { value } else { -value };
+        Stride(value)
     }
 
     pub(crate) fn offset(&self, index: usize, size: usize) -> usize {
-        match self {
-            Stride::Positive(stride_val) => index * stride_val,
-            Stride::Negative(stride_val) => (size - 1 - index) * stride_val,
+        if self.is_positive() {
+            index * (self.0 as usize)
+        } else {
+            (size - 1 - index) * (-self.0 as usize)
         }
+    }
+}
+
+impl Deref for Stride {
+    type Target = isize;
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }
 
 impl Mul<usize> for Stride {
     type Output = Stride;
-
     fn mul(self, rhs: usize) -> Self::Output {
-        match self {
-            Stride::Positive(stride_val) => Stride::Positive(stride_val * rhs),
-            Stride::Negative(stride_val) => Stride::Negative(stride_val * rhs),
-        }
+        Stride(self.0 * rhs as isize)
     }
 }
 
 impl PartialEq for Stride {
     fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Stride::Positive(lhs), Stride::Positive(rhs)) => lhs == rhs,
-            (Stride::Negative(lhs), Stride::Negative(rhs)) => lhs == rhs,
-            (Stride::Positive(0), Stride::Negative(0)) => true,
-            (Stride::Negative(0), Stride::Positive(0)) => true,
-            _ => false,
-        }
+        self.0 == other.0
     }
 }

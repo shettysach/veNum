@@ -45,11 +45,7 @@ impl<T: Copy> Tensor<T> {
     pub fn scalar(data: T) -> Result<Tensor<T>> {
         Ok(Tensor {
             data: Arc::new(vec![data]),
-            shape: Shape {
-                sizes: vec![1],
-                strides: vec![Stride::Positive(1)],
-                offset: 0,
-            },
+            shape: Shape::scalar(),
         })
     }
 

@@ -1,6 +1,5 @@
 use crate::core::errors::UsizeCastError;
 use num_traits::FromPrimitive;
-use prettytable::{format::TableFormat, Table};
 use std::any::type_name;
 
 pub(crate) fn cast_usize<T>(value: usize) -> Result<T, UsizeCastError>
@@ -11,15 +10,4 @@ where
         value,
         dtype: type_name::<T>(),
     })
-}
-
-pub(crate) trait WithStyle {
-    fn with_style(self, style: &TableFormat) -> Self;
-}
-
-impl WithStyle for Table {
-    fn with_style(mut self, table_format: &TableFormat) -> Table {
-        self.set_format(*table_format);
-        self
-    }
 }

@@ -10,6 +10,8 @@
     - reduce operations such as sum, product, max, min and pooling
     - transformations such as view/reshape, permute/transpose, flip, expand, pad, slice, squeeze, unsqueeze
 
+> NOTE: WIP. Needs massive refactoring and optimization.
+
 - Clone the repo and run examples
 ```bash
 cargo run -r --example <example_name>
@@ -18,8 +20,6 @@ cargo run -r --example <example_name>
 ```bash
 cargo add --git https://github.com/shettysach/veNum
 ```
-
-> NOTE: WIP. Needs massive refactoring and optimization.
 
 ##### credits
 

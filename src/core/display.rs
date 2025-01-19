@@ -1,4 +1,4 @@
-use crate::{core::utils::WithStyle, Tensor};
+use crate::Tensor;
 use prettytable::{
     format::{self, TableFormat},
     {Cell, Row, Table},
@@ -29,7 +29,9 @@ impl<T: Display + Debug + Copy> Display for Tensor<T> {
 
             let table = if n % 2 == 1 {
                 let row = odd_dimensions(n, self, 0, style, precision);
-                Table::init(vec![row]).with_style(style)
+                let mut table = Table::init(vec![row]);
+                table.set_format(**style);
+                table
             } else {
                 even_dimensions(n, self, 0, style, precision)
             };
@@ -55,28 +57,27 @@ where
     let size = tensor.sizes()[dim];
     let stride = tensor.strides()[dim];
 
-    match n {
-        1 => {
-            let offset = tensor.offset() + stride_offset;
-            Row::from(
-                (0..size)
-                    .map(|index| {
-                        let index = stride.offset(index, size) + offset;
-                        let element = tensor.data[index];
-                        let element = &format!("{:.precision$}", element);
-                        Cell::from(&element)
-                    })
-                    .collect::<Vec<Cell>>(),
-            )
-        }
-        _ => Row::from(
+    if n == 1 {
+        let offset = tensor.offset() + stride_offset;
+        Row::from(
+            (0..size)
+                .map(|index| {
+                    let index = stride.offset(index, size) + offset;
+                    let element = tensor.data[index];
+                    let element = &format!("{:.precision$}", element);
+                    Cell::from(&element)
+                })
+                .collect::<Vec<Cell>>(),
+        )
+    } else {
+        Row::from(
             (0..size)
                 .map(|index| {
                     let offset = stride.offset(index, size) + stride_offset;
                     even_dimensions(n - 1, tensor, offset, style, precision)
                 })
                 .collect::<Vec<Table>>(),
-        ),
+        )
     }
 }
 
@@ -101,5 +102,7 @@ where
         })
         .collect();
 
-    Table::init(rows).with_style(style)
+    let mut table = Table::init(rows);
+    table.set_format(*style);
+    table
 }

@@ -208,7 +208,6 @@ impl Mode {
                 .map(|((&index, &input_size), &kernel_size)| {
                     let start = index.saturating_sub(kernel_size - 1);
                     let end = (index + 1).min(input_size);
-
                     (start, end)
                 })
                 .collect(),
