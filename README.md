@@ -1,8 +1,8 @@
 <div align="center">
-    <img src="assets/icon.png" width="33%">
+    <img src="assets/icon.png" width="15%">
 </div>
 
-- Stands for vectorized N-dimensional numerical arrays. Tensor / Nd Array library.
+- Stands for vectorized N-dimensional numerical arrays. Tensor / NdArray library.
 - Currently capable of creating CPU Tensors of type T and performing 
     - broadcasted algebraic operations
     - Nd matrix multiplication (naive)
@@ -10,7 +10,7 @@
     - reduce operations such as sum, product, max, min and pooling
     - transformations such as view/reshape, permute/transpose, flip, expand, pad, slice, squeeze, unsqueeze
 
-> NOTE: WIP. Needs massive refactoring and optimization.
+> NOTE: WIP. Needs refactoring and optimization.
 
 - Clone the repo and run examples
 ```bash

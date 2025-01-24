@@ -1,7 +1,6 @@
-use anyhow::Result;
 use venum::Tensor;
 
-fn main() -> Result<()> {
+fn main() -> anyhow::Result<()> {
     let a = Tensor::linspace(1, 5, 5)?;
     println!("a");
     println!("{}", &a);

@@ -30,21 +30,22 @@ where
         let mut data = vec![T::default(); sizes.iter().product()];
 
         for iter_index in Strider::new(&output_sizes, strides) {
-            let (input_ranges, _) = range_fn(input_sizes, pool_sizes, &iter_index);
+            let input_ranges = range_fn(input_sizes, pool_sizes, &iter_index).0;
 
             let input_slice = match input_ranges {
                 Some(input_ranges) => &self.slice_dims(&[i_first], &input_ranges)?,
                 None => self,
             };
+            let input_slice = &input_slice.to_contiguous()?;
             let aggregate = f(input_slice, &[i_first], keepdims)?;
 
             for (index, &value) in aggregate.data_contiguous().iter().enumerate() {
-                let offset = (index * output_width) + index;
+                let offset = index * output_width + index;
                 data[offset] = value
             }
         }
 
-        Ok(Tensor::init(data, &sizes))
+        Tensor::init(data, &sizes)
     }
 
     pub fn pool_2d(
@@ -70,30 +71,31 @@ where
         let mut data = vec![T::default(); sizes.iter().product()];
 
         for iter_index in Strider::new(&output_sizes, strides) {
-            let (input_ranges, _) = range_fn(input_sizes, pool_sizes, &iter_index);
+            let input_ranges = range_fn(input_sizes, pool_sizes, &iter_index).0;
 
             let input_slice = match input_ranges {
                 Some(input_ranges) => &self.slice_dims(input_dims, &input_ranges)?,
                 None => self,
             };
+            let input_slice = &input_slice.to_contiguous()?;
             let reduction = f(input_slice, input_dims, keepdims)?;
 
             for (index, &value) in reduction.data_contiguous().iter().enumerate() {
-                let offset = (index * output_product)
-                    + (iter_index[0] / strides[0] * output_sizes[1])
+                let offset = index * output_product
+                    + iter_index[0] / strides[0] * output_sizes[1]
                     + iter_index[1] / strides[1];
 
                 data[offset] = value
             }
         }
 
-        Ok(Tensor::init(data, &sizes))
+        Tensor::init(data, &sizes)
     }
 
     // 1D
 
     pub fn max_pool_1d(
-        self,
+        &self,
         pool_sizes: &[usize; 1],
         strides: &[usize; 1],
         mode: Mode,
@@ -103,7 +105,7 @@ where
     }
 
     pub fn min_pool_1d(
-        self,
+        &self,
         pool_sizes: &[usize; 1],
         strides: &[usize; 1],
         mode: Mode,
@@ -113,7 +115,7 @@ where
     }
 
     pub fn sum_pool_1d(
-        self,
+        &self,
         pool_sizes: &[usize; 1],
         strides: &[usize; 1],
         mode: Mode,
@@ -122,8 +124,18 @@ where
         self.pool_1d(Tensor::sum_dims, pool_sizes, strides, mode, keepdims)
     }
 
+    pub fn product_pool_1d(
+        &self,
+        pool_sizes: &[usize; 1],
+        strides: &[usize; 1],
+        mode: Mode,
+        keepdims: bool,
+    ) -> Result<Tensor<T>> {
+        self.pool_1d(Tensor::product_dims, pool_sizes, strides, mode, keepdims)
+    }
+
     pub fn mean_pool_1d(
-        self,
+        &self,
         pool_sizes: &[usize; 1],
         strides: &[usize; 1],
         mode: Mode,
@@ -138,7 +150,7 @@ where
     // 2D
 
     pub fn max_pool_2d(
-        self,
+        &self,
         pool_sizes: &[usize; 2],
         strides: &[usize; 2],
         mode: Mode,
@@ -148,7 +160,7 @@ where
     }
 
     pub fn min_pool_2d(
-        self,
+        &self,
         pool_sizes: &[usize; 2],
         strides: &[usize; 2],
         mode: Mode,
@@ -158,7 +170,7 @@ where
     }
 
     pub fn sum_pool_2d(
-        self,
+        &self,
         pool_sizes: &[usize; 2],
         strides: &[usize; 2],
         mode: Mode,
@@ -167,8 +179,18 @@ where
         self.pool_2d(Tensor::sum_dims, pool_sizes, strides, mode, keepdims)
     }
 
+    pub fn product_pool_2d(
+        &self,
+        pool_sizes: &[usize; 2],
+        strides: &[usize; 2],
+        mode: Mode,
+        keepdims: bool,
+    ) -> Result<Tensor<T>> {
+        self.pool_2d(Tensor::product_dims, pool_sizes, strides, mode, keepdims)
+    }
+
     pub fn mean_pool_2d(
-        self,
+        &self,
         pool_sizes: &[usize; 2],
         strides: &[usize; 2],
         mode: Mode,

@@ -15,10 +15,10 @@ fn main() -> Result<()> {
     let pool = &[2, 2];
     println!("Pool sizes: \n{:?}\n", pool);
 
-    let max_pool = same_conv.pool_2d(Tensor::max_dims, pool, strides, Mode::Valid, true)?;
+    let max_pool = same_conv.max_pool_2d(pool, strides, Mode::Valid, true)?;
     println!("Max pool: \n{}", max_pool);
 
-    let avg_pool = same_conv.pool_2d(Tensor::mean_dims, pool, strides, Mode::Valid, true)?;
+    let avg_pool = same_conv.mean_pool_2d(pool, strides, Mode::Valid, true)?;
     println!("Avg pool: \n{}", avg_pool);
 
     Ok(())

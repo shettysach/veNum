@@ -1,7 +1,6 @@
-use anyhow::Result;
 use venum::Tensor;
 
-fn main() -> Result<()> {
+fn main() -> anyhow::Result<()> {
     let tensor = Tensor::eye(3)?;
     println!("{}", tensor);
 

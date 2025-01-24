@@ -1,6 +1,6 @@
 use crate::Tensor;
 use prettytable::{
-    format::{self, TableFormat},
+    format::consts::FORMAT_BOX_CHARS,
     {Cell, Row, Table},
 };
 use std::{
@@ -21,19 +21,15 @@ impl<T: Debug + Copy> Debug for Tensor<T> {
 
 impl<T: Display + Debug + Copy> Display for Tensor<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        let n = self.shape.rank();
+        let n = self.rank();
 
         if (1..=8).contains(&n) {
-            let style = &format::consts::FORMAT_BOX_CHARS;
-            let precision = 2;
-
             let table = if n % 2 == 1 {
-                let row = odd_dimensions(n, self, 0, style, precision);
-                let mut table = Table::init(vec![row]);
-                table.set_format(**style);
-                table
+                let row = odd_dimensions(self, n, 0);
+                let table = Table::init(vec![row]);
+                set_style(table)
             } else {
-                even_dimensions(n, self, 0, style, precision)
+                even_dimensions(self, n, 0)
             };
 
             write!(f, "{}", table)?;
@@ -43,66 +39,50 @@ impl<T: Display + Debug + Copy> Display for Tensor<T> {
     }
 }
 
-fn odd_dimensions<T>(
-    n: usize,
-    tensor: &Tensor<T>,
-    stride_offset: usize,
-    style: &TableFormat,
-    precision: usize,
-) -> Row
+fn odd_dimensions<T>(tensor: &Tensor<T>, n: usize, stride_offset: usize) -> Row
 where
     T: Copy + Display,
 {
     let dim = tensor.rank() - n;
-    let size = tensor.sizes()[dim];
-    let stride = tensor.strides()[dim];
+    let size = tensor.shape.sizes[dim];
+    let stride = tensor.shape.strides[dim];
 
     if n == 1 {
         let offset = tensor.offset() + stride_offset;
-        Row::from(
-            (0..size)
-                .map(|index| {
-                    let index = stride.offset(index, size) + offset;
-                    let element = tensor.data[index];
-                    let element = &format!("{:.precision$}", element);
-                    Cell::from(&element)
-                })
-                .collect::<Vec<Cell>>(),
-        )
+        Row::from((0..size).map(|index| {
+            let index = stride.offset(index, size) + offset;
+            let element = tensor.data[index];
+            let element = format!("{:.2}", element); // TODO: Handle precision without String
+            Cell::from(&element)
+        }))
     } else {
-        Row::from(
-            (0..size)
-                .map(|index| {
-                    let offset = stride.offset(index, size) + stride_offset;
-                    even_dimensions(n - 1, tensor, offset, style, precision)
-                })
-                .collect::<Vec<Table>>(),
-        )
+        Row::from((0..size).map(|index| {
+            let offset = stride.offset(index, size) + stride_offset;
+            even_dimensions(tensor, n - 1, offset)
+        }))
     }
 }
 
-fn even_dimensions<T>(
-    n: usize,
-    tensor: &Tensor<T>,
-    stride_offset: usize,
-    style: &TableFormat,
-    precision: usize,
-) -> Table
+fn even_dimensions<T>(tensor: &Tensor<T>, n: usize, stride_offset: usize) -> Table
 where
     T: Copy + Display,
 {
     let dim = tensor.rank() - n;
-    let size = tensor.sizes()[dim];
-    let stride = tensor.strides()[dim];
+    let size = tensor.shape.sizes[dim];
+    let stride = tensor.shape.strides[dim];
 
     let rows = (0..size)
         .map(|index| {
             let offset = stride.offset(index, size) + stride_offset;
-            odd_dimensions(n - 1, tensor, offset, style, precision)
+            odd_dimensions(tensor, n - 1, offset)
         })
         .collect();
 
-    let mut table = Table::init(rows);
-    table.set_format(*style);
+    let table = Table::init(rows);
+    set_style(table)
+}
+
+fn set_style(mut table: Table) -> Table {
+    table.set_format(*FORMAT_BOX_CHARS);
     table
 }

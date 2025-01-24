@@ -1,5 +1,5 @@
-use anyhow::Result;
-use image::{ImageBuffer, ImageError, RgbImage};
+use anyhow::{anyhow, Result};
+use image::{ImageBuffer, RgbImage};
 use std::{fmt::Display, ops::Div, path::Path};
 use venum::{conv::Mode, Tensor};
 
@@ -50,10 +50,30 @@ fn main() -> Result<()> {
     let edge = image_tensor.correlate_2d(&edge_kernel, &[1, 1], Mode::Same)?;
     write_image(&edge, "assets/edge.png")?;
 
+    let matrix_kernel = Tensor::new(
+        &[
+            0.0, 0.0, 0.0, //
+            0.0, 0.0, 0.0, //
+            0.0, 0.0, 0.0, //
+            //
+            0.0, -1.0, 0.0, // Laplacian
+            -1.0, 4.0, -1.0, // Edge Detection
+            0.0, -1.0, 0.0, // Kernel
+            //
+            0.0, 0.0, 0.0, //
+            0.0, 0.0, 0.0, //
+            0.0, 0.0, 0.0, //
+        ],
+        &[3, 3, 3],
+    )?;
+
+    let matrix = image_tensor.correlate_2d(&matrix_kernel, &[1, 1], Mode::Same)?;
+    write_image(&matrix, "assets/matrix.png")?;
+
     Ok(())
 }
 
-fn read_image<P>(path: P) -> Result<(Vec<f32>, u32, u32), ImageError>
+fn read_image<P>(path: P) -> Result<(Vec<f32>, u32, u32)>
 where
     P: AsRef<Path>,
 {
@@ -73,7 +93,7 @@ where
     Ok((f32_data, width, height))
 }
 
-fn write_image<P>(tensor: &Tensor<f32>, path: P) -> Result<(), ImageError>
+fn write_image<P>(tensor: &Tensor<f32>, path: P) -> Result<()>
 where
     P: AsRef<Path> + Display,
 {
@@ -93,7 +113,7 @@ where
     }
 
     let img: RgbImage =
-        ImageBuffer::from_raw(width, height, u8_data).expect("Error saving output image.");
+        ImageBuffer::from_raw(width, height, u8_data).ok_or(anyhow!("Error saving image."))?;
 
     println!("Image saved at {}", path);
     img.save(path)?;

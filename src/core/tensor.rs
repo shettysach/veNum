@@ -16,11 +16,11 @@ pub struct Tensor<T> {
 impl<T: Copy> Tensor<T> {
     // --- Init ---
 
-    pub(crate) fn init(data: Vec<T>, sizes: &[usize]) -> Tensor<T> {
-        Tensor {
+    pub(crate) fn init(data: Vec<T>, sizes: &[usize]) -> Result<Tensor<T>> {
+        Ok(Tensor {
             data: Arc::new(data),
             shape: Shape::new(sizes),
-        }
+        })
     }
 
     pub fn new(data: &[T], sizes: &[usize]) -> Result<Tensor<T>> {
@@ -35,11 +35,11 @@ impl<T: Copy> Tensor<T> {
             .into());
         }
 
-        Ok(Tensor::init(data.to_vec(), sizes))
+        Tensor::init(data.to_vec(), sizes)
     }
 
     pub fn new_1d(data: &[T]) -> Result<Tensor<T>> {
-        Ok(Tensor::init(data.to_vec(), &[data.len()]))
+        Tensor::init(data.to_vec(), &[data.len()])
     }
 
     pub fn scalar(data: T) -> Result<Tensor<T>> {
@@ -50,7 +50,7 @@ impl<T: Copy> Tensor<T> {
     }
 
     pub fn same(element: T, size: usize) -> Result<Tensor<T>> {
-        Ok(Tensor::init(vec![element; size], &[size]))
+        Tensor::init(vec![element; size], &[size])
     }
 
     pub fn zeroes(size: usize) -> Result<Tensor<T>>
@@ -76,14 +76,20 @@ impl<T: Copy> Tensor<T> {
             .ok_or(ArangeError::Comparison)?;
 
         let comparison_fn: fn(T, T) -> bool = match step_order {
-            Ordering::Greater => match end > start {
-                true => |current, end| end > current,
-                false => return Err(ArangeError::Positive.into()),
-            },
-            Ordering::Less => match start > end {
-                true => |current, end| current > end,
-                false => return Err(ArangeError::Negative.into()),
-            },
+            Ordering::Greater => {
+                if end > start {
+                    |current, end| end > current
+                } else {
+                    return Err(ArangeError::Positive.into());
+                }
+            }
+            Ordering::Less => {
+                if start > end {
+                    |current, end| current > end
+                } else {
+                    return Err(ArangeError::Negative.into());
+                }
+            }
             Ordering::Equal => return Err(ArangeError::Zero.into()),
         };
 
@@ -94,7 +100,7 @@ impl<T: Copy> Tensor<T> {
         .collect::<Vec<T>>();
         let num = data.len();
 
-        Ok(Tensor::init(data, &[num]))
+        Tensor::init(data, &[num])
     }
 
     pub fn linspace(start: T, end: T, num: usize) -> Result<Tensor<T>>
@@ -106,9 +112,9 @@ impl<T: Copy> Tensor<T> {
 
         let data = successors(Some(start), |&prev| Some(prev + step))
             .take(num)
-            .collect::<Vec<T>>();
+            .collect();
 
-        Ok(Tensor::init(data, &[num]))
+        Tensor::init(data, &[num])
     }
 
     pub fn eye(size: usize) -> Result<Tensor<T>>
@@ -124,9 +130,9 @@ impl<T: Copy> Tensor<T> {
                     T::zero()
                 }
             })
-            .collect::<Vec<T>>();
+            .collect();
 
-        Ok(Tensor::init(data, &[size, size]))
+        Tensor::init(data, &[size, size])
     }
 
     pub fn to_contiguous(&self) -> Result<Tensor<T>> {
@@ -154,6 +160,7 @@ impl<T: Copy> Tensor<T> {
         }
     }
 
+    // TODO: Need to handle flip_all case
     pub(crate) fn data_contiguous(&self) -> &[T] {
         let start = self.offset();
         let end = start + self.numel();
@@ -170,11 +177,11 @@ impl<T: Copy> Tensor<T> {
         self.data[self.shape.idx(indices)]
     }
 
-    pub fn index(&self, indices: &[usize]) -> Result<T, IndexError> {
+    pub fn index(&self, indices: &[usize]) -> Result<T> {
         Ok(self.data[self.shape.index(indices)?])
     }
 
-    pub fn index_dims(&self, dimensions: &[usize], indices: &[usize]) -> Result<T, IndexError> {
+    pub fn index_dims(&self, dimensions: &[usize], indices: &[usize]) -> Result<T> {
         Ok(self.data[self.shape.index_dims(dimensions, indices)?])
     }
 
@@ -183,7 +190,7 @@ impl<T: Copy> Tensor<T> {
     pub fn reshape(&self, sizes: &[usize]) -> Result<Tensor<T>> {
         self.shape.valid_reshape(sizes)?;
 
-        Ok(Tensor::init(self.data_non_contiguous(), sizes))
+        Tensor::init(self.data_non_contiguous(), sizes)
     }
 
     pub fn flatten(&self) -> Result<Tensor<T>> {
@@ -406,7 +413,7 @@ impl<T: Copy> Tensor<T> {
             })
             .collect();
 
-        Ok(Tensor::init(data, &sizes))
+        Tensor::init(data, &sizes)
     }
 
     pub fn index_map(&self, f: impl Fn(T) -> T, index: &[usize]) -> Result<Tensor<T>> {
@@ -518,7 +525,7 @@ impl<T: Copy> Tensor<T> {
 }
 
 impl<T> Tensor<T> {
-    // --- Same Data, Modified Shape ---
+    // --- Same Data, Different Shape ---
 
     pub(crate) fn with_shape(&self, shape: Shape) -> Tensor<T> {
         Tensor {
@@ -575,7 +582,7 @@ impl<T> Tensor<T> {
         Ok(self.with_shape(self.shape.slicer(indices)?))
     }
 
-    // --- Attributes ---
+    // --- Shape Attributes ---
 
     pub fn numel(&self) -> usize {
         self.shape.numel()

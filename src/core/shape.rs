@@ -154,10 +154,10 @@ impl Shape {
                 } else if size == 1 {
                     Ok((expansion, Stride::new(0, true)))
                 } else {
-                    Err(ExpansionError { size, expansion })
+                    Err(ExpansionError { size, expansion }.into())
                 }
             })
-            .collect::<Result<(Vec<usize>, Vec<Stride>), ExpansionError>>()?;
+            .collect::<Result<(Vec<usize>, Vec<Stride>)>>()?;
 
         Ok(Shape {
             sizes,
@@ -193,12 +193,6 @@ impl Shape {
         let current = self.rank();
 
         match unsqueezed.cmp(&current) {
-            Ordering::Equal => Ok(self.clone()),
-            Ordering::Less => Err(UnsqueezeError {
-                current,
-                unsqueezed,
-            }
-            .into()),
             Ordering::Greater => {
                 let ones_len = unsqueezed - current;
                 let mut sizes = self.sizes.to_vec();
@@ -206,6 +200,12 @@ impl Shape {
 
                 Ok(Shape::new(&sizes))
             }
+            Ordering::Equal => Ok(self.clone()),
+            Ordering::Less => Err(UnsqueezeError {
+                current,
+                unsqueezed,
+            }
+            .into()),
         }
     }
 
@@ -221,7 +221,7 @@ impl Shape {
             + self.offset
     }
 
-    pub(crate) fn index(&self, indices: &[usize]) -> Result<usize, IndexError> {
+    pub(crate) fn index(&self, indices: &[usize]) -> Result<usize> {
         let mut indices = indices.to_vec();
         indices.resize(self.rank(), 0);
         self.valid_indices(&indices, &Vec::from_iter(0..indices.len()))?;
@@ -229,11 +229,7 @@ impl Shape {
         Ok(self.idx(&indices))
     }
 
-    pub(crate) fn index_dims(
-        &self,
-        dimensions: &[usize],
-        indices: &[usize],
-    ) -> Result<usize, IndexError> {
+    pub(crate) fn index_dims(&self, dimensions: &[usize], indices: &[usize]) -> Result<usize> {
         self.valid_indices(indices, dimensions)?;
 
         Ok((0..self.rank())
@@ -302,11 +298,11 @@ impl Shape {
     pub(crate) fn slice_dims(
         &self,
         dimensions: &[usize],
-        indices: &[(usize, usize)],
+        ranges: &[(usize, usize)],
     ) -> Result<Shape> {
         self.valid_contiguity()?;
         self.valid_dimensions(dimensions)?;
-        self.valid_ranges(indices, dimensions)?;
+        self.valid_ranges(ranges, dimensions)?;
 
         let positive = self
             .strides
@@ -323,7 +319,7 @@ impl Shape {
         let sizes = (0..self.rank())
             .map(|dimension| {
                 if let Some(position) = dimensions.iter().position(|&d| d == dimension) {
-                    let (start, end) = indices[position];
+                    let (start, end) = ranges[position];
                     let end = if end == 0 { self.sizes[dimension] } else { end };
                     let stride = self.strides[dimension].0;
 
@@ -481,26 +477,27 @@ impl Shape {
         true
     }
 
-    pub(crate) fn valid_contiguity(&self) -> Result<(), NonContiguousError> {
+    pub(crate) fn valid_contiguity(&self) -> Result<()> {
         if self.is_contiguous() {
             Ok(())
         } else {
-            Err(NonContiguousError)
+            Err(NonContiguousError.into())
         }
     }
 
-    pub(crate) fn valid_reshape(&self, sizes: &[usize]) -> Result<(), ReshapeError> {
+    pub(crate) fn valid_reshape(&self, sizes: &[usize]) -> Result<()> {
         if self.numel() != sizes.iter().product::<usize>() {
             return Err(ReshapeError {
                 current_shape: self.sizes.to_vec(),
                 new_shape: sizes.to_vec(),
-            });
+            }
+            .into());
         }
 
         Ok(())
     }
 
-    fn valid_indices(&self, indices: &[usize], dimensions: &[usize]) -> Result<(), IndexError> {
+    fn valid_indices(&self, indices: &[usize], dimensions: &[usize]) -> Result<()> {
         for (&dimension, &index) in dimensions.iter().zip(indices) {
             let size = self.sizes[dimension];
 
@@ -509,36 +506,34 @@ impl Shape {
                     index,
                     dimension,
                     size,
-                });
+                }
+                .into());
             }
         }
 
         Ok(())
     }
 
-    fn valid_ranges(
-        &self,
-        ranges: &[(usize, usize)],
-        dimensions: &[usize],
-    ) -> Result<(), RangeError> {
+    fn valid_ranges(&self, ranges: &[(usize, usize)], dimensions: &[usize]) -> Result<()> {
         for (&dimension, &range) in dimensions.iter().zip(ranges) {
             let size = self.sizes[dimension];
 
             if range.0 > range.1 && range.1 > 0 {
-                return Err(RangeError::GreaterStartRange(range.0, range.1));
+                return Err(RangeError::GreaterStartRange(range.0, range.1).into());
             } else if range.0 > size || range.1 > size {
                 return Err(RangeError::OutOfRange {
                     range,
                     dimension,
                     size,
-                });
+                }
+                .into());
             }
         }
 
         Ok(())
     }
 
-    pub(crate) fn valid_dimensions(&self, dimensions: &[usize]) -> Result<(), DimensionError> {
+    pub(crate) fn valid_dimensions(&self, dimensions: &[usize]) -> Result<()> {
         let dim_range = self.rank() - 1;
         let mut set = HashSet::with_capacity(dimensions.len());
 
@@ -547,9 +542,10 @@ impl Shape {
                 return Err(DimensionError::OutOfRange {
                     dimension,
                     dim_range,
-                });
+                }
+                .into());
             } else if set.contains(&dimension) {
-                return Err(DimensionError::Repetition(dimension));
+                return Err(DimensionError::Repetition(dimension).into());
             } else {
                 set.insert(dimension);
             }
@@ -558,39 +554,35 @@ impl Shape {
         Ok(())
     }
 
-    fn valid_rank(&self, num_indices: usize) -> Result<(), IndexError> {
+    fn valid_rank(&self, num_indices: usize) -> Result<()> {
         let num_dimensions = self.rank();
 
         if num_indices != num_dimensions {
             Err(IndexError::IndicesLength {
                 num_indices,
                 num_dimensions,
-            })
+            }
+            .into())
         } else {
             Ok(())
         }
     }
 
-    pub(crate) fn valid_data_length(
-        &self,
-        data_length: usize,
-    ) -> Result<(), InvalidDataLengthError> {
+    pub(crate) fn valid_data_length(&self, data_length: usize) -> Result<()> {
         let numel = self.numel();
 
         if data_length != numel {
             Err(InvalidDataLengthError {
                 data_length,
                 tensor_size: numel,
-            })
+            }
+            .into())
         } else {
             Ok(())
         }
     }
 
-    pub(crate) fn conv_larger_input(
-        input_sizes: &[usize],
-        kernel_sizes: &[usize],
-    ) -> Result<bool, ValidConvShapeError> {
+    pub(crate) fn larger_conv_input(input_sizes: &[usize], kernel_sizes: &[usize]) -> Result<bool> {
         if input_sizes.iter().zip(kernel_sizes).all(|(&i, &k)| i >= k) {
             Ok(true)
         } else if input_sizes.iter().zip(kernel_sizes).all(|(&i, &k)| k >= i) {
@@ -599,7 +591,8 @@ impl Shape {
             Err(ValidConvShapeError {
                 input_sizes: input_sizes.to_vec(),
                 kernel_sizes: kernel_sizes.to_vec(),
-            })
+            }
+            .into())
         }
     }
 }

@@ -1,6 +1,9 @@
 use crate::Tensor;
 use anyhow::Result;
-use std::ops::{Add, Div, Mul, Sub};
+use std::{
+    iter::Sum,
+    ops::{Add, Div, Mul, Sub},
+};
 
 // --- Standard binary operations ---
 
@@ -75,55 +78,34 @@ binary_ops!(Div, div, /);
 
 // --- Operations for floats ---
 
-impl Tensor<f32> {
-    pub fn ln(&self) -> Result<Tensor<f32>> {
+impl<F> Tensor<F>
+where
+    F: num_traits::Float,
+{
+    pub fn ln(&self) -> Result<Tensor<F>> {
         self.unary_map(|elem| elem.ln())
     }
 
-    pub fn exp(&self) -> Result<Tensor<f32>> {
+    pub fn exp(&self) -> Result<Tensor<F>> {
         self.unary_map(|elem| elem.exp())
     }
 
-    pub fn powi(&self, rhs: i32) -> Result<Tensor<f32>> {
+    pub fn powi(&self, rhs: i32) -> Result<Tensor<F>> {
         self.unary_map(|elem| elem.powi(rhs))
     }
 
-    pub fn powf(&self, rhs: f32) -> Result<Tensor<f32>> {
+    pub fn powf(&self, rhs: F) -> Result<Tensor<F>> {
         self.unary_map(|elem| elem.powf(rhs))
     }
 
-    pub fn sqrt(&self) -> Result<Tensor<f32>> {
+    pub fn sqrt(&self) -> Result<Tensor<F>> {
         self.unary_map(|elem| elem.sqrt())
     }
 
-    pub fn softmax(&self) -> Result<Tensor<f32>> {
-        let exp = self.exp()?;
-        &exp / exp.sum()?
-    }
-}
-
-impl Tensor<f64> {
-    pub fn ln(&self) -> Result<Tensor<f64>> {
-        self.unary_map(|elem| elem.ln())
-    }
-
-    pub fn exp(&self) -> Result<Tensor<f64>> {
-        self.unary_map(|elem| elem.exp())
-    }
-
-    pub fn powi(&self, rhs: i32) -> Result<Tensor<f64>> {
-        self.unary_map(|elem| elem.powi(rhs))
-    }
-
-    pub fn powf(&self, rhs: f64) -> Result<Tensor<f64>> {
-        self.unary_map(|elem| elem.powf(rhs))
-    }
-
-    pub fn sqrt(&self) -> Result<Tensor<f64>> {
-        self.unary_map(|elem| elem.sqrt())
-    }
-
-    pub fn softmax(&self) -> Result<Tensor<f64>> {
+    pub fn softmax(&self) -> Result<Tensor<F>>
+    where
+        F: Sum,
+    {
         let exp = self.exp()?;
         &exp / exp.sum()?
     }

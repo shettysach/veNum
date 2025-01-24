@@ -52,12 +52,12 @@ where
             let product_sum = (input_slice * kernel_slice)?;
 
             for (index, &value) in product_sum.data_contiguous().iter().enumerate() {
-                let offset = (index * output_width) + index;
+                let offset = index * output_width + index;
                 data[offset] = value
             }
         }
 
-        Ok(Tensor::init(data, &sizes))
+        Tensor::init(data, &sizes)
     }
 
     pub fn correlate_2d(
@@ -101,15 +101,15 @@ where
             let product_sum = (input_slice * kernel_slice)?.sum_dims(input_dims, true)?;
 
             for (index, &value) in product_sum.data_contiguous().iter().enumerate() {
-                let offset = (index * output_product)
-                    + (iter_index[0] / strides[0] * output_sizes[1])
+                let offset = index * output_product
+                    + iter_index[0] / strides[0] * output_sizes[1]
                     + iter_index[1] / strides[1];
 
                 data[offset] = value
             }
         }
 
-        Ok(Tensor::init(data, &sizes))
+        Tensor::init(data, &sizes)
     }
 
     pub fn convolve_1d(
@@ -141,17 +141,15 @@ impl Mode {
         kernel_sizes: &[usize],
         strides: &[usize],
     ) -> Vec<usize> {
-        let size_fn: fn(usize, usize, usize) -> usize = match self {
-            Mode::Valid => |i, k, s| i.abs_diff(k) / s + 1,
-            Mode::Full => |i, k, s| (i + k) / s - 1,
-            Mode::Same => |i, _, s| i / s,
-        };
-
         input_sizes
             .iter()
             .zip(kernel_sizes)
             .zip(strides)
-            .map(|((&i, &k), &s)| size_fn(i, k, s))
+            .map(|((&i, &k), &s)| match self {
+                Mode::Valid => i.abs_diff(k) / s + 1,
+                Mode::Full => (i + k) / s - 1,
+                Mode::Same => i / s,
+            })
             .collect()
     }
 
@@ -161,10 +159,13 @@ impl Mode {
         kernel_sizes: &[usize],
     ) -> Result<RangeFn> {
         Ok(match self {
-            Mode::Valid => match Shape::conv_larger_input(input_sizes, kernel_sizes)? {
-                true => Mode::valid_ranges_i,
-                false => Mode::valid_ranges_k,
-            },
+            Mode::Valid => {
+                if Shape::larger_conv_input(input_sizes, kernel_sizes)? {
+                    Mode::valid_ranges_i
+                } else {
+                    Mode::valid_ranges_k
+                }
+            }
             Mode::Full => Mode::full_ranges,
             Mode::Same => Mode::same_ranges,
         })

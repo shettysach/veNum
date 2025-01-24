@@ -1,7 +1,6 @@
-use anyhow::Result;
 use venum::Tensor;
 
-fn main() -> Result<()> {
+fn main() -> anyhow::Result<()> {
     let a = Tensor::arange(0, 1_000_000, 1)?.view(&[1000, 1000])?;
     let b = Tensor::arange(1_000_000, 0, -1)?.view(&[1000, 1000])?;
 
