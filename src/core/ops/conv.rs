@@ -1,9 +1,10 @@
+use anyhow::{Ok, Result};
+use std::{iter::Sum, ops::Mul};
+
 use crate::{
     core::{iters::Strider, shape::Shape},
     Tensor,
 };
-use anyhow::{Ok, Result};
-use std::{iter::Sum, ops::Mul};
 
 pub enum Mode {
     Valid,
@@ -42,11 +43,11 @@ where
                 range_fn(input_conv_sizes, kernel_conv_sizes, &[iter_index]);
 
             let input_slice = match input_ranges {
-                Some(input_ranges) => &self.slice_dims(&[i_zero], &input_ranges)?,
+                Some(input_ranges) => &self.slice_dims(&input_ranges, &[i_zero])?,
                 None => self,
             };
             let kernel_slice = match kernel_ranges {
-                Some(kernel_ranges) => &kernel.slice_dims(&[k_zero], &kernel_ranges)?,
+                Some(kernel_ranges) => &kernel.slice_dims(&kernel_ranges, &[k_zero])?,
                 None => kernel,
             };
             let product_sum = (input_slice * kernel_slice)?;
@@ -91,11 +92,11 @@ where
             let (input_ranges, kernel_ranges) = range_fn(input_sizes, kernel_sizes, &iter_index);
 
             let input_slice = match input_ranges {
-                Some(input_ranges) => &self.slice_dims(input_dims, &input_ranges)?,
+                Some(input_ranges) => &self.slice_dims(&input_ranges, input_dims)?,
                 None => self,
             };
             let kernel_slice = match kernel_ranges {
-                Some(kernel_ranges) => &kernel.slice_dims(kernel_dims, &kernel_ranges)?,
+                Some(kernel_ranges) => &kernel.slice_dims(&kernel_ranges, kernel_dims)?,
                 None => kernel,
             };
             let product_sum = (input_slice * kernel_slice)?.sum_dims(input_dims, true)?;

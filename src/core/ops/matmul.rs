@@ -1,9 +1,10 @@
+use anyhow::{bail, Result};
+use std::{cmp::Ordering, iter::Sum, ops::Mul};
+
 use crate::{
     core::{errors::MatmulShapeError, iters::Slicer, shape::Shape},
     Tensor,
 };
-use anyhow::Result;
-use std::{cmp::Ordering, iter::Sum, ops::Mul};
 
 impl<T> Tensor<T>
 where
@@ -13,7 +14,7 @@ where
         let (n1, n2) = (self.shape.sizes[1], rhs.shape.sizes[0]);
 
         if n1 != n2 {
-            return Err(MatmulShapeError::Matmul2d { n1, n2 }.into());
+            bail!(MatmulShapeError::Matmul2d { n1, n2 });
         }
 
         let rhs = rhs.transpose(1, 0)?.to_contiguous()?;
@@ -52,7 +53,7 @@ where
         let (n1, n2) = (lhs.shape.sizes[first], rhs.shape.sizes[second]);
 
         if n1 != n2 {
-            return Err(MatmulShapeError::MatmulNd { n1, n2 }.into());
+            bail!(MatmulShapeError::MatmulNd { n1, n2 });
         }
 
         let rhs = rhs.transpose(second, first)?.to_contiguous()?;

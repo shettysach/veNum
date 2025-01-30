@@ -4,20 +4,20 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 #[error("Data length ({data_length}) does not match size of tensor ({tensor_size}).")]
-pub struct InvalidDataLengthError {
+pub(crate) struct InvalidDataLengthError {
     pub data_length: usize,
     pub tensor_size: usize,
 }
 
 #[derive(Error, Debug)]
 #[error("Tensor of shape {current_shape:?} cannot be viewed/reshaped to {new_shape:?}.")]
-pub struct ReshapeError {
+pub(crate) struct ReshapeError {
     pub current_shape: Vec<usize>,
     pub new_shape: Vec<usize>,
 }
 
 #[derive(Error, Debug)]
-pub enum EmptyTensorError {
+pub(crate) enum EmptyTensorError {
     #[error("Strides are empty. Unable to view.")]
     View,
 
@@ -33,38 +33,38 @@ pub enum EmptyTensorError {
 
 #[derive(Error, Debug)]
 #[error("Shape is not contiguous. Use `to_contiguous()` or an alternate function.")]
-pub struct NonContiguousError;
+pub(crate) struct NonContiguousError;
 
 #[derive(Error, Debug)]
 #[error("Size {size} cannot be expaned to size {expansion}. To be expanded, size should be 1.")]
-pub struct ExpansionError {
+pub(crate) struct ExpansionError {
     pub size: usize,
     pub expansion: usize,
 }
 
 #[derive(Error, Debug)]
 #[error("Current rank ({current}) is greater than unsqueezed rank ({unsqueezed}).")]
-pub struct UnsqueezeError {
+pub(crate) struct UnsqueezeError {
     pub current: usize,
     pub unsqueezed: usize,
 }
 
 #[derive(Error, Debug)]
+#[error("Transpose requires at least two dimensions.")]
+pub(crate) struct TransposeError;
+
+#[derive(Error, Debug)]
 #[error("Shapes {lhs_sizes:?} and {rhs_sizes:?} cannot broadcasted together.")]
-pub struct BroadcastError {
+pub(crate) struct BroadcastError {
     pub lhs_sizes: Vec<usize>,
     pub rhs_sizes: Vec<usize>,
 }
 
-#[derive(Error, Debug)]
-#[error("Transpose requires at least two dimensions.")]
-pub struct TransposeError;
-
 // --- Index, Range, Dims ---
 
 #[derive(Error, Debug)]
-pub enum IndexError {
-    #[error("Index {index:?} is out of range for dimension {dimension} (size: {size}).")]
+pub(crate) enum IndexError {
+    #[error("Index {index:?} is out of range for dimension {dimension}, of size {size}.")]
     OutOfRange {
         index: usize,
         dimension: usize,
@@ -79,8 +79,8 @@ pub enum IndexError {
 }
 
 #[derive(Error, Debug)]
-pub enum DimensionError {
-    #[error("Dimension {dimension} is greater than max range of dimensions ({dim_range}).")]
+pub(crate) enum DimensionError {
+    #[error("Dimension {dimension} is greater than max range of dimensions, {dim_range}.")]
     OutOfRange { dimension: usize, dim_range: usize },
 
     #[error("Dimension {0} repeats.")]
@@ -88,8 +88,8 @@ pub enum DimensionError {
 }
 
 #[derive(Error, Debug)]
-pub enum RangeError {
-    #[error("{range:?} is out of range for dimension {dimension} (size: {size}).")]
+pub(crate) enum RangeError {
+    #[error("{range:?} is out of range for dimension {dimension}, of size {size}.")]
     OutOfRange {
         range: (usize, usize),
         dimension: usize,
@@ -103,7 +103,7 @@ pub enum RangeError {
 // --- Matmul ---
 
 #[derive(Error, Debug)]
-pub enum MatmulShapeError {
+pub(crate) enum MatmulShapeError {
     #[error("Cannot matrix mutltiply with 0d tensor.")]
     Matmul0d,
 
@@ -118,9 +118,9 @@ pub enum MatmulShapeError {
 
 #[derive(Error, Debug)]
 #[error(
-    "Neither are all input sizes {input_sizes:?} >= the kernel sizes {kernel_sizes:?}, nor are all kernel sizes {kernel_sizes:?} >= the input sizes {input_sizes:?}."
+    "Neither are all input sizes {0:?} >= the kernel sizes {1:?}, nor are all kernel sizes {1:?} >= the input sizes {0:?}.", input_sizes, kernel_sizes
 )]
-pub struct ValidConvShapeError {
+pub(crate) struct ValidConvShapeError {
     pub input_sizes: Vec<usize>,
     pub kernel_sizes: Vec<usize>,
 }
@@ -128,18 +128,14 @@ pub struct ValidConvShapeError {
 // --- Misc ---
 
 #[derive(Error, Debug)]
-#[error("Error type for consistency.")]
-pub struct PhantomError;
-
-#[derive(Error, Debug)]
 #[error("Cannot convert {value} from `usize` to type {dtype}.")]
-pub struct UsizeCastError {
+pub(crate) struct UsizeCastError {
     pub value: usize,
     pub dtype: &'static str,
 }
 
 #[derive(Error, Debug)]
-pub enum ArangeError {
+pub(crate) enum ArangeError {
     #[error("Step size cannot be zero.")]
     Zero,
 

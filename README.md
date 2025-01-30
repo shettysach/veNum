@@ -1,5 +1,5 @@
 <div align="center">
-    <img src="assets/icon.png" width="15%">
+    <img src="assets/icon.png" width="25%">
 </div>
 
 - Stands for vectorized N-dimensional numerical arrays. Tensor / NdArray library.
@@ -10,7 +10,8 @@
     - reduce operations such as sum, product, max, min and pooling
     - transformations such as view/reshape, permute/transpose, flip, expand, pad, slice, squeeze, unsqueeze
 
-> NOTE: WIP. Needs refactoring and optimization.
+> [!NOTE]
+> WIP. Needs refactoring and optimization.
 
 - Clone the repo and run examples
 ```bash
@@ -34,4 +35,4 @@ cargo add --git https://github.com/shettysach/veNum
 - [pytorch-internals by ezyang](http://blog.ezyang.com/2019/05/pytorch-internals/)
 - [tensorken articles by Kurt Schelfthout](https://getcode.substack.com/p/fun-and-hackable-tensors-in-rust)
 - [MiniTorch](https://minitorch.github.io/)
-- [Convolutions](https://youtu.be/Lakz2MoHy6o?si=hsYi2IzxUwv3LOkW)
+- [Convolutions](https://youtu.be/Lakz2MoHy6o)

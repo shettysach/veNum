@@ -1,9 +1,10 @@
-use crate::core::errors::UsizeCastError;
 use anyhow::Result;
 use num_traits::FromPrimitive;
 use std::any::type_name;
 
-pub(crate) fn cast_usize<T>(value: usize) -> Result<T>
+use crate::core::errors::UsizeCastError;
+
+pub(crate) fn cast_to_usize<T>(value: usize) -> Result<T>
 where
     T: FromPrimitive,
 {

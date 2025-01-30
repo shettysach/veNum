@@ -1,10 +1,11 @@
-use crate::{conv::Mode, core::iters::Strider, Tensor};
 use anyhow::Result;
 use num_traits::FromPrimitive;
 use std::{
     iter::{Product, Sum},
     ops::Div,
 };
+
+use crate::{conv::Mode, core::iters::Strider, Tensor};
 
 impl<T> Tensor<T>
 where
@@ -33,7 +34,7 @@ where
             let input_ranges = range_fn(input_sizes, pool_sizes, &iter_index).0;
 
             let input_slice = match input_ranges {
-                Some(input_ranges) => &self.slice_dims(&[i_first], &input_ranges)?,
+                Some(input_ranges) => &self.slice_dims(&input_ranges, &[i_first])?,
                 None => self,
             };
             let input_slice = &input_slice.to_contiguous()?;
@@ -74,7 +75,7 @@ where
             let input_ranges = range_fn(input_sizes, pool_sizes, &iter_index).0;
 
             let input_slice = match input_ranges {
-                Some(input_ranges) => &self.slice_dims(input_dims, &input_ranges)?,
+                Some(input_ranges) => &self.slice_dims(&input_ranges, input_dims)?,
                 None => self,
             };
             let input_slice = &input_slice.to_contiguous()?;

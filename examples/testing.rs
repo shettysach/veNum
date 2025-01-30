@@ -1,13 +1,11 @@
 use venum::Tensor;
 
 fn main() -> anyhow::Result<()> {
-    let t = Tensor::arange(0, 27, 1)?.view(&[3, 3, 3])?.flip(&[0])?;
-    println!("{}", t);
+    let a = Tensor::arange(0, 27, 1)?.view(&[3, 3, 3])?;
+    println!("{}", a);
 
-    let z = Tensor::arange(0, 9, 1)?.view(&[3, 3])?;
-    println!("{}", z);
-
-    println!("{}", t.matmul(&z)?);
+    let x = a.index_dims(&[2], &[3])?;
+    println!("{x}");
 
     Ok(())
 }

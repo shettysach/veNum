@@ -50,7 +50,7 @@ fn main() -> Result<()> {
     let edge = image_tensor.correlate_2d(&edge_kernel, &[1, 1], Mode::Same)?;
     write_image(&edge, "assets/edge.png")?;
 
-    let matrix_kernel = Tensor::new(
+    let green_edge_kernel = Tensor::new(
         &[
             0.0, 0.0, 0.0, //
             0.0, 0.0, 0.0, //
@@ -67,8 +67,8 @@ fn main() -> Result<()> {
         &[3, 3, 3],
     )?;
 
-    let matrix = image_tensor.correlate_2d(&matrix_kernel, &[1, 1], Mode::Same)?;
-    write_image(&matrix, "assets/matrix.png")?;
+    let green_edge = image_tensor.correlate_2d(&green_edge_kernel, &[1, 1], Mode::Same)?;
+    write_image(&green_edge, "assets/green_edge.png")?;
 
     Ok(())
 }
@@ -115,8 +115,8 @@ where
     let img: RgbImage =
         ImageBuffer::from_raw(width, height, u8_data).ok_or(anyhow!("Error saving image."))?;
 
+    img.save(&path)?;
     println!("Image saved at {}", path);
-    img.save(path)?;
 
     Ok(())
 }

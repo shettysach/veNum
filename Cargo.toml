@@ -4,10 +4,10 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-anyhow = "1.0.89"
-num-traits = "0.2.19" # For easier dtype conversions
-prettytable = "0.10.0" # For data and shape visualization
-thiserror = "1.0.64" # For easier error definition
+anyhow = "1.0.89" # result/error
+num-traits = "0.2.19" # dtype traits
+prettytable = "0.10.0" # printing
+thiserror = "1.0.64" # error definition
 
 [dev-dependencies]
-image = "0.24.6" # For `kernels.rs` example
+image = "0.24.6" # examples/kernels.rs 

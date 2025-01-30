@@ -38,10 +38,10 @@ fn main() -> anyhow::Result<()> {
         Ok(bool_tensor.data().iter().filter(|&&b| b).count()) // Count of true values
     };
 
-    let bool_sum_dim0 = bool_tensor.reduce(&[0], bool_sum, false)?; // bool_sum of along dim 1
+    let bool_sum_dim0 = bool_tensor.reduce(bool_sum, &[0], false)?; // bool_sum of along dim 1
     println!("{}", bool_sum_dim0);
 
-    let bool_sum_dim1 = bool_tensor.reduce(&[1], bool_sum, false)?; // bool_sum of along dim 1
+    let bool_sum_dim1 = bool_tensor.reduce(bool_sum, &[1], false)?; // bool_sum of along dim 1
     println!("{}", bool_sum_dim1);
 
     Ok(())

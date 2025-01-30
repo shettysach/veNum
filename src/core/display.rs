@@ -1,4 +1,3 @@
-use crate::Tensor;
 use prettytable::{
     format::consts::FORMAT_BOX_CHARS,
     {Cell, Row, Table},
@@ -7,6 +6,8 @@ use std::{
     any::type_name,
     fmt::{Debug, Display, Formatter, Result},
 };
+
+use crate::{core::shape::offset_fn, Tensor};
 
 impl<T: Debug + Copy> Debug for Tensor<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
@@ -50,14 +51,14 @@ where
     if n == 1 {
         let offset = tensor.offset() + stride_offset;
         Row::from((0..size).map(|index| {
-            let index = stride.offset(index, size) + offset;
+            let index = offset_fn(stride, index, size) + offset;
             let element = tensor.data[index];
-            let element = format!("{:.2}", element); // TODO: Handle precision without String
+            //let element = format!("{:.2}", element); // TODO: Handle precision without String
             Cell::from(&element)
         }))
     } else {
         Row::from((0..size).map(|index| {
-            let offset = stride.offset(index, size) + stride_offset;
+            let offset = offset_fn(stride, index, size) + stride_offset;
             even_dimensions(tensor, n - 1, offset)
         }))
     }
@@ -73,7 +74,7 @@ where
 
     let rows = (0..size)
         .map(|index| {
-            let offset = stride.offset(index, size) + stride_offset;
+            let offset = offset_fn(stride, index, size) + stride_offset;
             odd_dimensions(tensor, n - 1, offset)
         })
         .collect();

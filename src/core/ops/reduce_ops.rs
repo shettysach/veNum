@@ -1,12 +1,13 @@
-use crate::{
-    core::{errors::EmptyTensorError, iters::Indexer, utils::cast_usize},
-    Tensor,
-};
 use anyhow::Result;
 use num_traits::FromPrimitive;
 use std::{
     iter::{Product, Sum},
     ops::Div,
+};
+
+use crate::{
+    core::{errors::EmptyTensorError, iters::Indexer, utils::cast_to_usize},
+    Tensor,
 };
 
 impl<T> Tensor<T>
@@ -33,7 +34,7 @@ where
         T: Sum<T> + Div<T, Output = T> + FromPrimitive,
     {
         let numel = self.numel();
-        let numel_casted = cast_usize(numel)?;
+        let numel_casted = cast_to_usize(numel)?;
 
         Ok(self.sum()? / numel_casted)
     }
@@ -93,34 +94,34 @@ where
     where
         T: Sum<T>,
     {
-        self.reduce(dimensions, Tensor::sum, keepdims)
+        self.reduce(Tensor::sum, dimensions, keepdims)
     }
 
     pub fn mean_dims(&self, dimensions: &[usize], keepdims: bool) -> Result<Tensor<T>>
     where
         T: Sum<T> + Div<T, Output = T> + FromPrimitive,
     {
-        self.reduce(dimensions, Tensor::mean, keepdims)
+        self.reduce(Tensor::mean, dimensions, keepdims)
     }
 
     pub fn product_dims(&self, dimensions: &[usize], keepdims: bool) -> Result<Tensor<T>>
     where
         T: Product<T>,
     {
-        self.reduce(dimensions, Tensor::product, keepdims)
+        self.reduce(Tensor::product, dimensions, keepdims)
     }
 
     pub fn max_dims(&self, dimensions: &[usize], keepdims: bool) -> Result<Tensor<T>>
     where
         T: PartialOrd,
     {
-        self.reduce(dimensions, Tensor::max, keepdims)
+        self.reduce(Tensor::max, dimensions, keepdims)
     }
 
     pub fn min_dims(&self, dimensions: &[usize], keepdims: bool) -> Result<Tensor<T>>
     where
         T: PartialOrd,
     {
-        self.reduce(dimensions, Tensor::min, keepdims)
+        self.reduce(Tensor::min, dimensions, keepdims)
     }
 }

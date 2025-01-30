@@ -1,9 +1,10 @@
-use crate::Tensor;
 use anyhow::Result;
 use std::{
     iter::Sum,
     ops::{Add, Div, Mul, Sub},
 };
+
+use crate::Tensor;
 
 // --- Standard binary operations ---
 
@@ -106,7 +107,7 @@ where
     where
         F: Sum,
     {
-        let exp = self.exp()?;
-        &exp / exp.sum()?
+        let exp = &self.exp()?;
+        exp / exp.sum()?
     }
 }
