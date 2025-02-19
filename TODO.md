@@ -40,8 +40,5 @@
 - [>] Optimisations
 - [x] Better error handling
 
-- [ ] SIMD
-- [ ] GPU
-
 - [Autodiff](https://youtu.be/wG_nF1awSSY?si=slOvMRQPDW9ex_hE)
 - [JVP](https://youtu.be/caoeihy9kLo?si=BGE7iPIcNaXAjYbZ)

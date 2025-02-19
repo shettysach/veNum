@@ -23,13 +23,13 @@ impl<T: Copy> Tensor<T> {
     }
 
     pub fn new(data: &[T], sizes: &[usize]) -> Result<Tensor<T>> {
-        let data_length = data.len();
+        let data_size = data.len();
         let tensor_size = sizes.iter().product();
 
-        if data_length != tensor_size {
-            bail!(InvalidDataLengthError {
-                data_length,
-                tensor_size,
+        if data_size != tensor_size {
+            bail!(InvalidDataSizeError {
+                data_size,
+                tensor_size
             });
         }
 
@@ -65,56 +65,6 @@ impl<T: Copy> Tensor<T> {
         Tensor::same(T::one(), size)
     }
 
-    pub fn arange(start: T, end: T, step: T) -> Result<Tensor<T>>
-    where
-        T: Add<Output = T> + PartialOrd + Zero,
-    {
-        let step_order = step
-            .partial_cmp(&T::zero())
-            .ok_or(ArangeError::Comparison)?;
-
-        let comparison_fn: fn(T, T) -> bool = match step_order {
-            Ordering::Greater => {
-                if end > start {
-                    |current, end| end > current
-                } else {
-                    bail!(ArangeError::Positive);
-                }
-            }
-            Ordering::Less => {
-                if start > end {
-                    |current, end| current > end
-                } else {
-                    bail!(ArangeError::Negative);
-                }
-            }
-            Ordering::Equal => bail!(ArangeError::Zero),
-        };
-
-        let data: Vec<T> = successors(Some(start), |&prev| {
-            let current = prev + step;
-            comparison_fn(current, end).then_some(current)
-        })
-        .collect();
-        let num = data.len();
-
-        Tensor::init(data, &[num])
-    }
-
-    pub fn linspace(start: T, end: T, num: usize) -> Result<Tensor<T>>
-    where
-        T: NumOps + FromPrimitive + Debug,
-    {
-        let num_casted = cast_to_usize::<T>(num - 1)?;
-        let step = (end - start) / num_casted;
-
-        let data = successors(Some(start), |&prev| Some(prev + step))
-            .take(num)
-            .collect();
-
-        Tensor::init(data, &[num])
-    }
-
     pub fn eye(size: usize) -> Result<Tensor<T>>
     where
         T: Zero + One,
@@ -133,6 +83,47 @@ impl<T: Copy> Tensor<T> {
         Tensor::init(data, &[size, size])
     }
 
+    pub fn arange(start: T, end: T, step: T) -> Result<Tensor<T>>
+    where
+        T: Add<Output = T> + PartialOrd + Zero,
+    {
+        let ascending = match step
+            .partial_cmp(&T::zero())
+            .ok_or(ArangeError::Comparison)?
+        {
+            Ordering::Greater if end > start => Ok(true),
+            Ordering::Less if start > end => Ok(false),
+            Ordering::Greater => Err(ArangeError::Positive),
+            Ordering::Less => Err(ArangeError::Negative),
+            Ordering::Equal => Err(ArangeError::Zero),
+        }?;
+
+        let data: Vec<T> = successors(Some(start), |&prev| {
+            let curr = prev + step;
+            let cond = end > curr;
+            (ascending == cond).then_some(curr)
+        })
+        .collect();
+
+        Tensor::new_1d(&data)
+    }
+
+    pub fn linspace(start: T, end: T, num: usize) -> Result<Tensor<T>>
+    where
+        T: NumOps + FromPrimitive + Debug,
+    {
+        let num_casted = cast_to_usize::<T>(num - 1)?;
+        let step = (end - start) / num_casted;
+
+        let data = successors(Some(start), |&prev| Some(prev + step))
+            .take(num)
+            .collect();
+
+        Tensor::init(data, &[num])
+    }
+
+    // --- Data ---
+
     pub fn to_contiguous(&self) -> Result<Tensor<T>> {
         Ok(Tensor {
             data: Arc::new(self.data_non_contiguous()),
@@ -147,8 +138,6 @@ impl<T: Copy> Tensor<T> {
             self.to_contiguous()
         }
     }
-
-    // --- Data ---
 
     pub fn data_contiguous_positive_strides(&self) -> &[T] {
         let start = self.offset();
@@ -362,8 +351,16 @@ impl<T: Copy> Tensor<T> {
         let shape = Shape::new(&sizes);
         let expansion = sizes.len();
 
-        let lhs_broadcasted = self.unsqueeze(expansion)?.expand(&sizes)?;
-        let rhs_broadcasted = rhs.unsqueeze(expansion)?.expand(&sizes)?;
+        let lhs_broadcasted = if self.shape.sizes == sizes {
+            self
+        } else {
+            &self.unsqueeze(expansion)?.expand(&sizes)?
+        };
+        let rhs_broadcasted = if rhs.shape.sizes == sizes {
+            rhs
+        } else {
+            &rhs.unsqueeze(expansion)?.expand(&sizes)?
+        };
 
         let data = Arc::new(
             Indexer::new(&shape.sizes)
@@ -380,7 +377,7 @@ impl<T: Copy> Tensor<T> {
     }
 
     pub fn zip_array<R>(&self, rhs: &[T], f: impl Fn(T, T) -> R) -> Result<Tensor<R>> {
-        self.shape.valid_data_length(rhs.len())?;
+        self.shape.valid_data_size(rhs.len())?;
 
         let data = Indexer::new(&self.shape.sizes)
             .zip(rhs)
@@ -499,7 +496,7 @@ impl<T: Copy> Tensor<T> {
         ranges: &[(usize, usize)],
     ) -> Result<Tensor<T>> {
         let slice_shape = self.shape.slice(ranges)?;
-        slice_shape.valid_data_length(rhs.len())?;
+        slice_shape.valid_data_size(rhs.len())?;
 
         let mut data = self.data().to_vec();
         for (index, &rhs_value) in Indexer::new(&slice_shape.sizes).zip(rhs) {
@@ -521,7 +518,7 @@ impl<T: Copy> Tensor<T> {
         dimensions: &[usize],
     ) -> Result<Tensor<T>> {
         let slice_shape = self.shape.slice_dims(ranges, dimensions)?;
-        slice_shape.valid_data_length(rhs.len())?;
+        slice_shape.valid_data_size(rhs.len())?;
 
         let mut data = self.data().to_vec();
         for (index, &rhs_value) in Indexer::new(&slice_shape.sizes).zip(rhs) {

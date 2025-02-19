@@ -3,9 +3,9 @@ use thiserror::Error;
 // --- Shape ---
 
 #[derive(Error, Debug)]
-#[error("Data length ({data_length}) does not match size of tensor ({tensor_size}).")]
-pub(crate) struct InvalidDataLengthError {
-    pub data_length: usize,
+#[error("Data size ({data_size}) does not match size of tensor ({tensor_size}).")]
+pub(crate) struct InvalidDataSizeError {
+    pub data_size: usize,
     pub tensor_size: usize,
 }
 
@@ -43,10 +43,10 @@ pub(crate) struct ExpansionError {
 }
 
 #[derive(Error, Debug)]
-#[error("Current rank ({current}) is greater than unsqueezed rank ({unsqueezed}).")]
+#[error("Current rank ({current}) is greater than unsqueezed rank ({new_rank}).")]
 pub(crate) struct UnsqueezeError {
     pub current: usize,
-    pub unsqueezed: usize,
+    pub new_rank: usize,
 }
 
 #[derive(Error, Debug)]

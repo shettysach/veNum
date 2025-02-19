@@ -133,10 +133,6 @@ impl Shape {
     }
 
     pub(crate) fn expand(&self, expansions: &[usize]) -> Result<Shape> {
-        if self.sizes == expansions {
-            return Ok(self.clone());
-        }
-
         self.valid_rank(expansions.len())?;
 
         let (sizes, strides) = self
@@ -185,23 +181,19 @@ impl Shape {
         })
     }
 
-    pub(crate) fn unsqueeze(&self, unsqueezed: usize) -> Result<Shape> {
+    pub(crate) fn unsqueeze(&self, new_rank: usize) -> Result<Shape> {
         let current = self.rank();
 
-        match unsqueezed.cmp(&current) {
+        match new_rank.cmp(&current) {
             Ordering::Greater => {
-                let ones_len = unsqueezed - current;
+                let ones_len = new_rank - current;
                 let mut sizes = self.sizes.to_vec();
                 sizes.splice(..0, repeat(1).take(ones_len));
 
                 Ok(Shape::new(&sizes))
             }
             Ordering::Equal => Ok(self.clone()),
-            Ordering::Less => Err(UnsqueezeError {
-                current,
-                unsqueezed,
-            }
-            .into()),
+            Ordering::Less => Err(UnsqueezeError { current, new_rank }.into()),
         }
     }
 
@@ -584,18 +576,17 @@ impl Shape {
         }
     }
 
-    pub(crate) fn valid_data_length(&self, data_length: usize) -> Result<()> {
-        let numel = self.numel();
+    pub(crate) fn valid_data_size(&self, data_size: usize) -> Result<()> {
+        let tensor_size = self.numel();
 
-        if data_length != numel {
-            Err(InvalidDataLengthError {
-                data_length,
-                tensor_size: numel,
-            }
-            .into())
-        } else {
-            Ok(())
+        if data_size != tensor_size {
+            bail!(InvalidDataSizeError {
+                data_size,
+                tensor_size,
+            })
         }
+
+        Ok(())
     }
 
     pub(crate) fn larger_conv_input(input_sizes: &[usize], kernel_sizes: &[usize]) -> Result<bool> {

@@ -11,7 +11,7 @@
     - transformations such as view/reshape, permute/transpose, flip, expand, pad, slice, squeeze, unsqueeze
 
 > [!NOTE]
-> WIP. Needs refactoring and optimization.
+> WIP. Naive. Needs refactoring and optimization.
 
 - Clone the repo and run examples
 ```bash
